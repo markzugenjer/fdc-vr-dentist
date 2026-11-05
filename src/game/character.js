@@ -323,7 +323,7 @@ export class Character {
     this.lips = new THREE.Mesh(cached('lips', () => new THREE.TorusGeometry(1, 0.07, 8, 36)), std('#d9707f', { roughness: 0.45 }));
     this.lips.position.z = 0.013;
     this.tongue = new THREE.Mesh(ball(16), std('#ec8796', { roughness: 0.6 }));
-    this.tongue.position.z = 0.014;
+    this.tongue.position.z = 0.006; // behind the lower teeth
     this.open.add(this.cavity, this.lips, this.tongue);
     const toothGeo = cached('tooth', () => new THREE.CapsuleGeometry(0.5, 0.35, 4, 10));
     this.toothMat = std('#fffdf6', { roughness: 0.25 });
@@ -359,7 +359,13 @@ export class Character {
         const u = (i - 2.5) / 2.5;
         const x = u * W * 0.74;
         const edge = H * Math.sqrt(Math.max(0, 1 - (x / W) ** 2));
-        t.position.set(x, sign * Math.max(0.006, edge - 0.012), 0.016);
+        // Teeth shrink to fit inside the lips when the mouth is only a little open (talking,
+        // grinning). Wide open for treatment they keep their full size.
+        // The tip of each tooth stays just inside the lips (the lip ring is ~10% of the opening).
+        const half = Math.min(0.0162, edge * 0.38); // half the tooth height (capsule is 1.35 tall)
+        const width = Math.min(0.022, W * 0.296 * 0.95); // never wider than the gap between teeth
+        t.userData.mesh?.scale.set(width, (half * 2) / 1.35, 0.012);
+        t.position.set(x, sign * Math.max(half * 0.6, edge * 0.9 - half), 0.016);
         t.visible = show && !t.userData.gone && !(upperOnly && row === 'lower');
       });
     }

@@ -1,0 +1,20 @@
+{
+  "name": "fdc-vr-dentist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FDC Dentist: a cartoon dental clinic game for Meta Quest 3. Three.js + WebXR.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "quest:connect": "adb reverse tcp:5175 tcp:5175",
+    "pages:setup": "node -e \"require('fs').mkdirSync('.github/workflows',{recursive:true});require('fs').copyFileSync('scripts/deploy-pages.yml','.github/workflows/deploy.yml');console.log('Created .github/workflows/deploy.yml')\""
+  },
+  "dependencies": {
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "vite": "5.4.10"
+  }
+}

@@ -123,7 +123,7 @@ export class App {
     this.scene.fog = s.fog || null;
 
     const spawn = s.spawn || {};
-    this.rig.position.set(spawn.x || 0, 0, spawn.z || 0);
+    this.rig.position.set(spawn.x || 0, spawn.y || 0, spawn.z || 0);
     this.rig.rotation.set(0, spawn.yaw || 0, 0);
     this.loco.reset();
     this.emit('scene', name);

@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { FONT, roundRect, wrap } from '../core/ui.js';
 
 /**
- * Cartoon people built from simple shapes, animated in code (no model files):
- * big round head, expressive eyes and brows, a mouth that opens wide enough to treat.
+ * Stylised people built from simple shapes, animated in code (no model files): close to real
+ * body proportions with a slightly large head, expressive eyes and brows, and a mouth that opens
+ * wide enough to treat. Everything is low-poly and shares geometry, so a room full stays smooth.
  *
  *   const c = new Character({ skin, hair, hairStyle, top, bottom });
  *   c.walkTo([p1, p2])          → Promise, walks along the points
@@ -21,6 +22,10 @@ const ball = (seg = 18) => cached(`b${seg}`, () => new THREE.SphereGeometry(1, s
 const std = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...o });
 const ease = (k, dt) => 1 - Math.exp(-dt * k);
 const lerp = (a, b, k) => a + (b - a) * k;
+
+/** Body proportions: hips at 0.62 m, about 1.5 m tall at height 1 (adults use height ~1.1). */
+export const HIP_Y = 0.62;
+const HEAD_SCALE = 0.74;
 
 const FACES = {
   //        eye   brow  browY  sad   mouth     open  blush red  pupilY
@@ -58,7 +63,7 @@ export class Character {
 
     // --- hips and legs (thigh + shin, so sitting and walking bend at the knee)
     this.hips = new THREE.Group();
-    this.hips.position.y = 0.42;
+    this.hips.position.y = HIP_Y;
     this.body.add(this.hips);
     const pelvis = new THREE.Mesh(ball(), botMat);
     pelvis.scale.set(0.15, 0.08, 0.12);
@@ -67,18 +72,18 @@ export class Character {
       const thigh = new THREE.Group();
       thigh.position.set(0.075 * s, 0, 0);
       this.hips.add(thigh);
-      const tm = new THREE.Mesh(capsule(0.062, 0.12), botMat);
-      tm.position.y = -0.1;
+      const tm = new THREE.Mesh(capsule(0.066, 0.2), botMat);
+      tm.position.y = -0.14;
       thigh.add(tm);
       const shin = new THREE.Group();
-      shin.position.y = -0.2;
+      shin.position.y = -0.29;
       thigh.add(shin);
-      const sm = new THREE.Mesh(capsule(0.055, 0.1), botMat);
-      sm.position.y = -0.09;
+      const sm = new THREE.Mesh(capsule(0.05, 0.18), botMat);
+      sm.position.y = -0.13;
       shin.add(sm);
       const shoe = new THREE.Mesh(ball(), shoeMat);
-      shoe.scale.set(0.064, 0.045, 0.1);
-      shoe.position.set(0, -0.19, 0.03);
+      shoe.scale.set(0.05, 0.04, 0.11);
+      shoe.position.set(0, -0.27, 0.04);
       shin.add(shoe);
       return { thigh, shin };
     });
@@ -86,49 +91,50 @@ export class Character {
     // --- torso, arms
     this.torso = new THREE.Group();
     this.hips.add(this.torso);
-    const chest = new THREE.Mesh(capsule(0.16, 0.2), topMat);
-    chest.position.y = 0.2;
-    chest.scale.set(1.05, 1, 0.85);
+    const chest = new THREE.Mesh(capsule(0.15, 0.26), topMat);
+    chest.position.y = 0.24;
+    chest.scale.set(1.08, 1, 0.72); // flatter front to back, like a real chest
     this.torso.add(chest);
     if (o.collar) {
       const collar = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.022, 8, 20), std(o.collar));
       collar.rotation.x = Math.PI / 2;
-      collar.position.y = 0.44;
+      collar.position.y = 0.52;
       this.torso.add(collar);
     }
     this.arms = [-1, 1].map((s) => {
       const shoulder = new THREE.Group();
-      shoulder.position.set(0.19 * s, 0.38, 0);
+      shoulder.position.set(0.185 * s, 0.46, 0);
       this.torso.add(shoulder);
-      const up = new THREE.Mesh(capsule(0.05, 0.1), topMat);
-      up.position.y = -0.08;
+      const up = new THREE.Mesh(capsule(0.046, 0.17), topMat);
+      up.position.y = -0.12;
       shoulder.add(up);
       const elbow = new THREE.Group();
-      elbow.position.y = -0.17;
+      elbow.position.y = -0.25;
       shoulder.add(elbow);
-      const fore = new THREE.Mesh(capsule(0.043, 0.08), o.longSleeves ? topMat : this.skinMat);
-      fore.position.y = -0.07;
+      const fore = new THREE.Mesh(capsule(0.038, 0.15), o.longSleeves ? topMat : this.skinMat);
+      fore.position.y = -0.11;
       elbow.add(fore);
       const hand = new THREE.Mesh(ball(14), this.skinMat);
-      hand.scale.setScalar(0.052);
-      hand.position.y = -0.16;
+      hand.scale.set(0.04, 0.05, 0.025); // flatter, like a hand
+      hand.position.y = -0.23;
       elbow.add(hand);
       return { shoulder, elbow, hand, side: s };
     });
 
     // --- head (on a neck pivot so it can turn and nod)
     this.neck = new THREE.Group();
-    this.neck.position.y = 0.45;
+    this.neck.position.y = 0.53;
     this.neck.rotation.order = 'YXZ';
     this.torso.add(this.neck);
-    const neckMesh = new THREE.Mesh(capsule(0.05, 0.04), this.skinMat);
-    neckMesh.position.y = 0.03;
+    const neckMesh = new THREE.Mesh(capsule(0.045, 0.07), this.skinMat);
+    neckMesh.position.y = 0.05;
     this.neck.add(neckMesh);
     this.head = new THREE.Group();
-    this.head.position.y = 0.2;
+    this.head.position.y = 0.19;
+    this.head.scale.setScalar(HEAD_SCALE); // the face is designed at cartoon size, then scaled down
     this.neck.add(this.head);
     const skull = new THREE.Mesh(ball(28), this.skinMat);
-    skull.scale.setScalar(0.24);
+    skull.scale.set(0.215, 0.25, 0.23); // a bit taller than wide, like a real head
     this.head.add(skull);
     for (const s of [-1, 1]) {
       const ear = new THREE.Mesh(ball(12), this.skinMat);
@@ -146,16 +152,16 @@ export class Character {
       g.rotation.y = 0.32 * s;
       this.head.add(g);
       const w = new THREE.Mesh(ball(), white);
-      w.scale.set(0.042, 0.052, 0.022);
+      w.scale.set(0.036, 0.04, 0.02);
       g.add(w);
       const pupil = new THREE.Group();
       g.add(pupil);
       const pm = new THREE.Mesh(ball(), std(o.eyes, { roughness: 0.3 }));
-      pm.scale.set(0.028, 0.034, 0.012);
+      pm.scale.set(0.021, 0.024, 0.011);
       pm.position.z = 0.014;
       pupil.add(pm);
       const shine = new THREE.Mesh(ball(8), white);
-      shine.scale.setScalar(0.009);
+      shine.scale.setScalar(0.007);
       shine.position.set(0.009, 0.013, 0.026);
       pupil.add(shine);
       const x = new THREE.Group();
@@ -172,7 +178,7 @@ export class Character {
     this.brows = [-1, 1].map((s) => {
       const b = new THREE.Mesh(capsule(0.009, 0.045), hairMat);
       b.rotation.z = Math.PI / 2;
-      b.position.set(0.085 * s, 0.112, 0.215);
+      b.position.set(0.085 * s, 0.112, 0.193);
       this.head.add(b);
       return { b, side: s };
     });
@@ -180,13 +186,14 @@ export class Character {
     for (const s of [-1, 1]) {
       const ch = new THREE.Mesh(ball(12), this.cheekMat);
       ch.scale.set(0.035, 0.022, 0.01);
-      ch.position.set(0.135 * s, -0.035, 0.192);
+      ch.position.set(0.13 * s, -0.035, 0.18);
       ch.rotation.y = 0.6 * s;
       this.head.add(ch);
     }
     const nose = new THREE.Mesh(ball(12), this.skinMat);
-    nose.scale.set(0.024, 0.02, 0.02);
-    nose.position.set(0, -0.012, 0.238);
+    nose.scale.set(0.026, 0.04, 0.03);
+    nose.position.set(0, -0.005, 0.228);
+    nose.rotation.x = 0.25;
     this.head.add(nose);
 
     this.buildMouth();
@@ -453,14 +460,14 @@ export class Character {
         this.root.position.z = lerp(f.z, s.z, e);
         let dy = s.yaw - f.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
         this.root.rotation.y = f.yaw + dy * e;
-        this.root.position.y = (s.y - 0.42) * e + Math.sin(e * Math.PI) * 0.12; // a little hop up
+        this.root.position.y = (s.y - HIP_Y * this.root.scale.y) * e + Math.sin(e * Math.PI) * 0.12; // a little hop up
         this.recline = (s.recline || 0) * e;
       } else {
         this.sitAmt = 1 - e;
         const to = this.standTo;
         this.root.position.x = lerp(s.x, to.x, e);
         this.root.position.z = lerp(s.z, to.z, e);
-        this.root.position.y = (s.y - 0.42) * (1 - e) + Math.sin(e * Math.PI) * 0.1;
+        this.root.position.y = (s.y - HIP_Y * this.root.scale.y) * (1 - e) + Math.sin(e * Math.PI) * 0.1;
         this.recline = (s.recline || 0) * (1 - e);
       }
       if (this.sitT >= 1) { this.sitDir = 0; const r = this.onSat; this.onSat = null; r?.(); }
@@ -476,7 +483,7 @@ export class Character {
     this.blink = Math.min(1, this.blink + dt * 9);
     const eyeOpen = Math.max(0.08, c.eye * (this.blink < 1 ? 0.15 + this.blink * 0.85 : 1));
     for (const e of this.eyes) {
-      e.w.scale.y = 0.052 * eyeOpen;
+      e.w.scale.y = 0.04 * eyeOpen;
       e.pupil.scale.y = Math.max(0.15, Math.min(1, eyeOpen));
       e.pupil.position.y = c.py;
       e.w.visible = e.pupil.visible = !tg.x;
@@ -527,7 +534,7 @@ export class Character {
     if (this.bubble.time > 0) this.bubble.time -= dt;
     this.bubble.update(dt, this.bubble.time > 0);
     this.headWorld(_v);
-    _v.y += 0.4;
+    _v.y += 0.34;
     this.root.worldToLocal(_v);
     this.bubble.sprite.position.copy(_v);
   }

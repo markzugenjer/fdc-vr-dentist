@@ -5,6 +5,7 @@ import { Character } from './character.js';
 import { ToolTray, TOOL_INFO } from './tools.js';
 import { MouthWork } from './mouth.js';
 import { Effects } from './effects.js';
+import { Music } from './music.js';
 import { CASES, LINES, PATIENTS, ASSISTANT, pick } from './cases.js';
 import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from '../core/ui.js';
 import { store } from '../core/util.js';
@@ -17,6 +18,12 @@ const STAND = { x: 0.35, z: -1.12 }; // where the patient stands before sitting 
 const EXIT = { x: 0.85, z: -1.0 }; // where they step out of the chair (clear of the big panel)
 const CANCEL = Symbol('cancel');
 
+// The "Lobby FDC" buttons only appear when the game was opened from the FDC VR lobby. In the
+// stand-alone FDC Dentist app there is no lobby to go back to.
+const FROM_LOBBY = (() => {
+  const q = new URLSearchParams(location.search).get('from') === 'lobby';
+  try { if (q) sessionStorage.setItem('fdc.dentist.from', 'lobby'); return sessionStorage.getItem('fdc.dentist.from') === 'lobby'; } catch { return q; }
+})();
 const LOBBY_URL = location.port === '5175'
   ? `${location.protocol}//${location.hostname}:5173/?from=dentist`
   : '/?from=dentist';
@@ -31,10 +38,11 @@ export function createClinic(app) {
   group.add(room.group);
   const fx = new Effects(group);
   const sfx = app.sfx;
-  const tray = new ToolTray(app);
+  // on the dentist's right, clear of the line of sight to the patient's mouth
+  const tray = new ToolTray(app, { position: new THREE.Vector3(0.62, 0.86, -0.16), yaw: -0.85 });
   group.add(tray.group);
 
-  const assistant = new Character(ASSISTANT.look);
+  const assistant = new Character({ height: 1.06, ...ASSISTANT.look });
   assistant.root.position.set(-0.9, 0, -1.2);
   assistant.root.rotation.y = Math.atan2(0.9, 1.2);
   group.add(assistant.root);
@@ -113,6 +121,11 @@ export function createClinic(app) {
   const pResume = pBtn('Lanjut', 'mint', -0.33, () => setPaused(false));
   const pRestart = pBtn('Ulang', 'light', 0, () => { setPaused(false); startShift(); });
   const pLobby = pBtn('Lobby FDC', 'pink', 0.33, () => toLobby());
+  const music = new Music(sfx);
+  const musicLabel = () => (music.on ? 'Musik: nyala' : 'Musik: mati');
+  const pMusic = makeButton(app, { label: musicLabel(), tone: 'light', w: 0.36, h: 0.1, onSelect: () => { music.toggle(); pMusic.userData.setLabel(musicLabel()); } });
+  pMusic.position.set(0, 1.27, -0.94);
+  group.add(pMusic);
 
   function show(list, on) { for (const o of list) o.visible = on; }
   function layout() {
@@ -120,17 +133,20 @@ export function createClinic(app) {
     const r = state === 'result';
     const f = state === 'final';
     big.mesh.visible = t || r || f;
-    show([bStart, bHow, bLobby], t);
+    show([bStart, bHow], t);
+    bLobby.visible = t && FROM_LOBBY;
     bNext.visible = r;
     bAgain.visible = f;
-    bLobby2.visible = f || r;
+    bLobby2.visible = (f || r) && FROM_LOBBY;
     cardPanel.mesh.visible = !t && !f;
-    show([pausePanel.mesh, pResume, pRestart, pLobby], paused);
+    show([pausePanel.mesh, pResume, pRestart, pMusic], paused);
+    pLobby.visible = paused && FROM_LOBBY;
   }
 
   function setPaused(v) {
     paused = v;
     if (paused) sfx.stopAll();
+    music.duck(paused);
     layout();
   }
   app.on((type) => { if (type === 'menu' && state !== 'title') setPaused(!paused); });
@@ -348,7 +364,7 @@ export function createClinic(app) {
     layout();
     refreshCard(true);
 
-    patient = new Character(who.look);
+    patient = new Character({ height: 1.0 + Math.random() * 0.1, ...who.look });
     patient.root.position.set(DOOR.x, 0, DOOR.z - 0.6);
     patient.root.rotation.y = 0;
     patient.onStep = () => sfx.play('footstep');
@@ -570,8 +586,9 @@ export function createClinic(app) {
 
   function update(dt) {
     frameNo++;
+    music.tryStart();
     // desktop view: stand a little further back so the tray and the patient both fit
-    if (!xr()) app.camera.position.set(0, 1.62, 0.32);
+    if (!xr()) app.camera.position.set(0, 1.6, 0.3);
     app.camera.getWorldPosition(head);
     tickButtons(group, dt);
     room.update(paused ? 0 : dt);
@@ -659,13 +676,15 @@ export function createClinic(app) {
 
   return {
     group,
-    spawn: { x: 0, z: 0, yaw: 0 },
+    // y < 0 lowers the dentist's view (like sitting on a dentist's stool), so the patient isn't far below
+    spawn: { x: 0, y: -0.2, z: 0, yaw: 0 },
     bounds: 1.1,
     center: { x: 0, z: -0.1 },
     pitch: -0.42,
     update,
     dispose() {
       resetAll();
+      music.stop();
       assistant.dispose();
       window.removeEventListener('keydown', onKey);
       for (const c of app.pointers.controllers) c.object.removeEventListener('squeezestart', squeeze);

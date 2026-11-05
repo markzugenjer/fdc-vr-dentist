@@ -14,7 +14,7 @@ import { FONT } from '../core/ui.js';
  */
 export const ROOM = { minX: -2.4, maxX: 2.4, minZ: -3.2, maxZ: 1.8, h: 2.8 };
 export const DOOR = { x: 1.5, z: ROOM.minZ, w: 0.92, h: 2.1 };
-export const SEAT = { x: 0.2, y: 0.47, z: -0.62, yaw: Math.PI / 2, recline: 0.42 };
+export const SEAT = { x: 0.2, y: 0.5, z: -0.74, yaw: Math.PI / 2, recline: 0.55 };
 
 const M = {};
 function mats() {
@@ -259,7 +259,7 @@ export function buildRoom() {
   sun.position.set(-2, 3.5, 1.5);
   const spot = new THREE.SpotLight('#fff6e0', 3.2, 2.4, 0.5, 0.6, 1.2);
   spot.position.copy(lampHead.position);
-  spot.target.position.set(-0.05, 1.0, -0.55);
+  spot.target.position.set(-0.1, 0.95, -0.74); // the patient's mouth
   group.add(hemi, sun, spot, spot.target);
 
   mergeStill(still);
@@ -298,15 +298,15 @@ function buildChair(m) {
   const back = new THREE.Group();
   back.position.set(-0.15, 0.46, 0);
   group.add(back);
-  put(back, box(0.09, 0.56, 0.46, 0.04), m.mint, -0.05, 0.28, 0);
-  put(back, box(0.06, 0.52, 0.4, 0.03), m.white, -0.1, 0.28, 0);
-  put(back, box(0.08, 0.16, 0.3, 0.04), m.pink, -0.1, 0.6, 0);
+  put(back, box(0.09, 0.7, 0.46, 0.04), m.mint, -0.05, 0.35, 0);
+  put(back, box(0.06, 0.66, 0.4, 0.03), m.white, -0.1, 0.35, 0);
+  put(back, box(0.08, 0.17, 0.28, 0.04), m.pink, -0.08, 0.8, 0); // headrest
   // legrest
   const legs = new THREE.Group();
   legs.position.set(0.24, 0.42, 0);
   group.add(legs);
-  put(legs, box(0.46, 0.08, 0.42, 0.035), m.mint, 0.22, 0, 0);
-  put(legs, box(0.06, 0.12, 0.38, 0.025), m.white, 0.47, 0.03, 0);
+  put(legs, box(0.56, 0.08, 0.42, 0.035), m.mint, 0.27, 0, 0);
+  put(legs, box(0.06, 0.12, 0.38, 0.025), m.white, 0.57, 0.03, 0);
   const chair = { group, back, legs, recline: 0, want: 0 };
   chair.update = (dt) => {
     chair.recline += (chair.want - chair.recline) * (1 - Math.exp(-dt * 3));

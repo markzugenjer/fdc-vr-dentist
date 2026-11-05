@@ -28,6 +28,21 @@ It goes live at https://markzugenjer.github.io/fdc-vr-dentist/
 
 On the headset, open it from the **FDC VR** app: Lobby → **FDC Dentist**. There's no separate APK. **Lobby FDC** in the game goes back.
 
+## Its own Quest app (.apk)
+
+FDC Dentist can also be installed as its own app, next to FDC VR and FDC Solo VR. Like the others, the APK only opens the published site, so after the first install a `git push` is enough to update it.
+
+It shares the signing key of `../vr-games-1`. Pages must be live first.
+
+```bash
+npm run apk:setup     # adds id.co.fdc.vrdentist to ../vr-games-1/public/.well-known/assetlinks.json
+cd ../vr-games-1 && git add -A && git commit -m "Add FDC Dentist to assetlinks" && git push && cd -
+npm run apk:build     # → fdc-dentist.apk (wait for the vr-games-1 deploy to finish first)
+adb install -r fdc-dentist.apk
+```
+
+In the stand-alone app there are no **Lobby FDC** buttons. They only appear when the game is opened from the FDC VR lobby.
+
 ## How to play
 
 | | VR | Desktop |
@@ -36,6 +51,7 @@ On the headset, open it from the **FDC VR** app: Lobby → **FDC Dentist**. Ther
 | Use it | Bring the tool's tip to the patient's mouth and hold it there | Click and hold on the mouth |
 | Put it back | Grip button, or take another tool | `Space`, or click another tool |
 | Pause | B / Y | `M` or `Esc` |
+| Music on / off | Pause menu → **Musik** | Pause menu → **Musik** |
 | Walk / turn | Left stick / right stick | W A S D, drag to look |
 
 ## Treatments
@@ -69,6 +85,7 @@ src/game/tools.js  the 9 instruments and the tray
 src/game/room.js   the treatment room, chair, door, lamp
 src/game/effects.js  sparkles, tears, steam, hearts
 src/game/sfx.js    synthesized sounds (drill, scaler, suction, ouch, door...)
+src/game/music.js  cheerful background music, synthesized live (F major, 116 BPM)
 ```
 
 ## Add a treatment

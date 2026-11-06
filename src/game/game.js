@@ -1493,6 +1493,8 @@ export function createClinic(app) {
     if (!xr()) app.camera.position.set(0, 1.6, 0.3);
     app.camera.getWorldPosition(head);
     tickButtons(group, dt);
+    // empty chair on a menu: fold the backrest down so it doesn't cover the board and buttons
+    room.chair.flat = !patient && (state === 'title' || state === 'result' || state === 'final') ? 1 : 0;
     room.update(paused ? 0 : dt);
     fx.update(dt);
     tray.update(dt);

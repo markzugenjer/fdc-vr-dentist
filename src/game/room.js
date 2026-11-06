@@ -392,12 +392,15 @@ function buildChair(m) {
   group.add(legs);
   put(legs, box(0.56, 0.08, 0.42, 0.035), m.mint, 0.27, 0, 0);
   put(legs, box(0.06, 0.12, 0.38, 0.025), m.white, 0.57, 0.03, 0);
-  const chair = { group, back, legs, recline: 0, want: 0, padMat: m.mint, accentMat: m.pink };
+  // `flat` folds the empty backrest right down (on the menus) so it doesn't block the board
+  const chair = { group, back, legs, recline: 0, want: 0, flat: 0, flatNow: 0, padMat: m.mint, accentMat: m.pink };
   chair.update = (dt) => {
     chair.recline += (chair.want - chair.recline) * (1 - Math.exp(-dt * 3));
-    back.rotation.z = chair.recline * SEAT.recline + 0.05;
+    chair.flatNow += (chair.flat - chair.flatNow) * (1 - Math.exp(-dt * 4));
+    back.rotation.z = chair.recline * SEAT.recline + 0.05 + chair.flatNow * 1.25;
     legs.rotation.z = -0.35 - chair.recline * 0.2;
   };
+  chair.flat = chair.flatNow = 1; // the game starts on the menu
   chair.update(1);
   return chair;
 }

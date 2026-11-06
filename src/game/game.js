@@ -84,6 +84,8 @@ export function createClinic(app) {
   let hes = 0; // seconds the dentist has been hesitating on this step
   let helped = false;
   let helpCost = 0;
+  let hintsLeft = 0; // "Petunjuk" presses left this round
+  let hinted = null; // the tool the last hint pointed at (its ring goes once it's picked up)
   let lastPointer = null;
   let clinicTime = 9.5; // clinic clock (hours)
   let stepIdx = 0;
@@ -213,6 +215,7 @@ export function createClinic(app) {
     ['eventMinutes', () => `Mode Event: ${config.eventMinutes} menit`],
     ['patience', () => `Kesabaran pasien: ${choiceLabel('patience')}`],
     ['hearts', () => `Salah alat maksimal: ${config.hearts}x`],
+    ['hints', () => `Petunjuk alat: ${config.hints ? config.hints + 'x per ronde' : 'Mati'}`],
     ['pairs', () => `Pasien 2 masalah: ${choiceLabel('pairs')}`],
     ['funny', () => `Momen lucu: ${config.funny ? 'Nyala' : 'Mati'}`],
     ['nurseHelp', () => `Bantuan Suster Nana: ${config.nurseHelp ? 'Nyala' : 'Mati'}`],
@@ -320,6 +323,13 @@ export function createClinic(app) {
   cardPanel.mesh.position.set(0.98, 1.52, -1.3);
   cardPanel.mesh.rotation.y = -0.55;
   group.add(cardPanel.mesh);
+  // "Petunjuk" under the card: rings the right tool on the tray (a few per round, see Pengaturan)
+  const bHint = makeButton(app, { label: 'Petunjuk', tone: 'mint', w: 0.4, h: 0.1, onSelect: () => useHint() });
+  bHint.position.set(0.98, 1.08, -1.3);
+  bHint.rotation.y = -0.55;
+  bHint.visible = false;
+  group.add(bHint);
+  const hintLabel = () => `Petunjuk alat (${hintsLeft})`;
 
   // small score pop-up above the chair (event mode)
   let popText = null;
@@ -614,6 +624,7 @@ export function createClinic(app) {
     haptic(pointer, 0.3, 40);
     lastPointer = pointer;
     if (jobFor(tool.id)) hes = 0;
+    if (hinted && tool.id === hinted) { hinted = null; tray.highlight(null); }
     if (mode === 'tutorial' && state === 'treat') {
       const want = curStep(job)?.tool;
       if (tool.id === want) { tray.highlight(null); assistant.say('Bagus! Dekatkan ujungnya ke cincin pink di mulut pasien, lalu tahan.', 3.2); }
@@ -1156,6 +1167,19 @@ export function createClinic(app) {
     })());
   }
 
+  function useHint() {
+    const want = curStep(firstOpen());
+    if (hintsLeft <= 0 || !want || !(state === 'treat' || state === 'react')) { sfx.play('click'); return; }
+    hintsLeft--;
+    bHint.userData.setLabel(hintLabel());
+    sfx.play('sparkle');
+    assistant.act('point', 1.4);
+    if (want.tool === 'xray') { assistant.say('Petunjuk: tekan layar rontgen di sebelah kiri, Dok!', 2.8); return; }
+    hinted = want.tool;
+    tray.highlight(want.tool);
+    assistant.say(`Petunjuk: pakai ${TOOL_INFO[want.tool].name}, yang bercincin di baki!`, 2.8);
+  }
+
   function nurseHands(id) {
     const tool = tray.tools[id];
     if (!tool || !tool.home) return;
@@ -1454,6 +1478,9 @@ export function createClinic(app) {
     served = 0;
     spawned = 0;
     combo = 0;
+    hintsLeft = mode === 'tutorial' ? 0 : config.hints;
+    hinted = null;
+    bHint.userData.setLabel(hintLabel());
     eventLeft = config.eventMinutes * 60;
     clinicTime = 8;
     nextArrival = mode === 'tutorial' ? Infinity : 7;
@@ -1495,6 +1522,7 @@ export function createClinic(app) {
     tickButtons(group, dt);
     // empty chair on a menu: fold the backrest down so it doesn't cover the board and buttons
     room.chair.flat = !patient && (state === 'title' || state === 'result' || state === 'final') ? 1 : 0;
+    bHint.visible = !paused && hintsLeft > 0 && !!patient && (state === 'treat' || state === 'react') && !!curStep(firstOpen());
     room.update(paused ? 0 : dt);
     fx.update(dt);
     tray.update(dt);
@@ -1686,6 +1714,9 @@ export function createClinic(app) {
     get combo() { return combo; },
     tray, start, nextPatient, toTitle, boards, assistant,
     startShift: () => start('shift'),
+    hint: () => useHint(),
+    get hintsLeft() { return hintsLeft; },
+    get hintVisible() { return bHint.visible; },
     pick(id) { tray.onPick(tray.tools[id], app.pointers.mouse); },
     calm() { calmDown(app.pointers.mouse); },
     xray() { boards.onXray(); },

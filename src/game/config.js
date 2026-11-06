@@ -14,6 +14,7 @@ export const DEFAULTS = {
   pairs: 'sometimes', // patients with two problems: off | sometimes | often
   funny: true, // sneezes, phone calls, falling asleep, hiccups
   nurseHelp: true, // Suster Nana hands over the right tool when you hesitate
+  hints: 3, // "Petunjuk" presses per round: shows which tool is right (0 = no hint button)
   voices: true, // gibberish character voices
   cases: { scaling: true, extraction: true, filling: true, whitening: true, braces: true, rootcanal: true, checkup: true },
   types: { scared: true, chatty: true, vip: true, kid: true },
@@ -21,7 +22,7 @@ export const DEFAULTS = {
 
 /** The choices each setting cycles through in the game. */
 export const CHOICES = {
-  patientsPerShift: [3, 5, 7, 10],
+  patientsPerShift: [2, 3, 5, 7, 10],
   eventMinutes: [1, 2, 3, 5],
   patience: [
     { id: 'santai', label: 'Santai', mult: 1.6 },
@@ -29,6 +30,7 @@ export const CHOICES = {
     { id: 'cepat', label: 'Cepat bosan', mult: 0.65 },
   ],
   hearts: [2, 3, 5],
+  hints: [0, 1, 3, 5, 10],
   pairs: [
     { id: 'off', label: 'Tidak ada', chance: 0 },
     { id: 'sometimes', label: 'Kadang', chance: 0.25 },

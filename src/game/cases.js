@@ -77,6 +77,14 @@ export const CASES = {
   },
 };
 
+/** Treatments that can be combined for patients with two problems (their mouth visuals don't clash). */
+export const PAIRS = [
+  ['scaling', 'filling'],
+  ['scaling', 'extraction'],
+  ['filling', 'extraction'],
+  ['whitening', 'extraction'],
+];
+
 /** Fun facts shown after each patient (dental education, in Indonesian). */
 export const FACTS = {
   scaling: ['Scaling sebaiknya dilakukan setiap 6 bulan untuk mencegah radang gusi.', 'Karang gigi tidak bisa hilang hanya dengan sikat gigi biasa.'],
@@ -126,6 +134,9 @@ export const LINES = {
   sleep: ['Zzz...', '(mendengkur)'],
   hik: ['Hik!', 'Hik! Maaf, Dok... hik!'],
   rhythmOuch: ['Aw! Pelan, Dok!', 'Ikuti iramanya, Dok!'],
+  mirror: ['Wah! Gigiku kinclong!', 'Wow... cantik sekali!', 'Hah! Ini gigiku?!', 'Senyumku keren!'],
+  yawn: ['Hoaaam...', '(menguap)'],
+  nurseGive: ['Ini, Dok!', 'Pakai ini, Dok!'],
 };
 
 /** Suster Nana names the tool (used by the tutorial and after mistakes). */

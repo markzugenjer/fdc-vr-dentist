@@ -12,6 +12,7 @@ import { FONT, roundRect, wrap } from '../core/ui.js';
  *   c.standUp()                 → Promise
  *   c.face('pain')              neutral | happy | aaa | pain | mad | sad | numb | talk
  *   c.act('wave', 1.5)          wave | fist | facepalm | clap | cheer | thumbs | point | shrug | cover | phone | shiver | calm
+ *                               scroll | stretch | tidy | mirror | give
  *   c.say('Halo Dok!', 2.5)     speech bubble
  */
 
@@ -41,6 +42,8 @@ const FACES = {
   scared: { eye: 1.25, brow: 0, browY: 0.016, sad: 0.8, mouth: 'open', open: 0.45, blush: 0.2, red: 0, py: 0 },
   sleep: { eye: 0.06, brow: -0.1, browY: 0, sad: 0, mouth: 'open', open: 0.35, blush: 0.6, red: 0, py: 0 },
   sneeze: { eye: 0.1, brow: 0.3, browY: 0.014, sad: 0.4, mouth: 'open', open: 0.8, blush: 0.9, red: 0.3, py: 0 },
+  yawn: { eye: 0.1, brow: -0.2, browY: 0.004, sad: 0.2, mouth: 'open', open: 1.0, blush: 0.4, red: 0, py: 0 },
+  wow: { eye: 1.3, brow: -0.25, browY: 0.018, sad: 0, mouth: 'open', open: 0.7, blush: 1, red: 0, py: 0 },
 };
 
 export class Character {
@@ -58,6 +61,8 @@ export class Character {
     this.skinBase = new THREE.Color(o.skin);
     const topMat = std(o.top);
     const botMat = std(o.bottom);
+    this.topMat = topMat; // kept so a uniform can be recoloured
+    this.botMat = botMat;
     const shoeMat = std(o.shoes, { roughness: 0.5 });
     const hairMat = std(o.hair, { roughness: 0.85 });
     const dark = std('#2b2120', { roughness: 0.4 });
@@ -390,6 +395,7 @@ export class Character {
   }
 
   say(textStr, secs = 2.5, tone = 'normal') {
+    this.onSay?.(textStr, tone); // the game plays a little voice
     this.bubble.show(textStr, tone);
     this.bubble.time = secs;
     this.talkT = Math.min(secs, 0.25 + textStr.length * 0.045);
@@ -423,6 +429,17 @@ export class Character {
   /** Where the open mouth is, in world space. */
   mouthWorld(v = new THREE.Vector3()) { return this.cavity.getWorldPosition(v); }
   headWorld(v = new THREE.Vector3()) { return this.head.getWorldPosition(v); }
+
+  /** Hold a small object in the right hand (hand mirror, phone). */
+  holdItem(obj) {
+    this.dropItem();
+    const hand = this.arms[1].hand;
+    obj.position.set(0, -0.03, 0.02);
+    hand.parent.add(obj);
+    obj.position.add(hand.position);
+    this.item = obj;
+  }
+  dropItem() { if (this.item) { this.item.removeFromParent(); this.item = null; } }
 
   /** VIP: cool sunglasses pushed up on the head. */
   addShades() {
@@ -618,6 +635,8 @@ export class Character {
       set(`sh${i}`, lerp(Math.max(0, -Math.sin(ph) * dir) * 0.7 * w, 1.15, s));
       void leg;
     }
+    // swinging legs on the bench (kids and bored patients)
+    if (this.swingLegs && s > 0.9) this.legs.forEach((leg, i) => set(`sh${i}`, J[`sh${i}`] + Math.sin(t * 4.5 + i * Math.PI) * 0.3));
     // breathing and bobbing
     const breathe = Math.sin(t * 2.2) * 0.008;
     this.jump = Math.max(0, this.jump - dt * 2.5);
@@ -648,6 +667,12 @@ export class Character {
         if (a === 'shrug') { ax = -0.4; az = 0.65 * side; aex = -1.4; aez = 0.5 * side; }
         if (a === 'cover') { ax = -2.2; az = -0.35 * side; aex = -1.9; } // hands over the mouth
         if (a === 'phone' && right) { ax = -2.0; az = 0.35; aex = -2.2; } // hand to the ear
+        if (a === 'scroll' && right) { ax = -0.9; az = -0.2; aex = -1.6 + Math.sin(t * 3) * 0.05; } // phone in front of the chest
+        if (a === 'scroll' && !right) { ax = -0.7; az = 0.25; aex = -1.4; }
+        if (a === 'stretch') { az = 2.9 * side; ax = -0.2; aex = -0.6 + Math.sin(t * 2) * 0.1; } // big yawn stretch
+        if (a === 'tidy') { ax = -1.2 + Math.sin(t * 5 + i) * 0.15; az = -0.15 * side + Math.sin(t * 3) * 0.12; aex = -0.6; } // arranging things
+        if (a === 'mirror' && right) { ax = -0.95; az = -0.45; aex = -0.95; } // hand mirror held up in front of the face
+        if (a === 'give' && right) { ax = -1.45; az = 0.25; aex = -0.25; } // holding something out
         if (a === 'shiver') { ax = -1.0 + Math.sin(t * 40 + i) * 0.08; az = -0.3 * side; aex = -1.6; } // arms hugging
         if (a === 'calm' && right) { ax = -1.1; az = -0.2; aex = -0.5; aez = Math.sin(t * 6) * 0.3; } // gentle pat
         sx = lerp(sx, ax, k); sz = lerp(sz, az, k); ex = lerp(ex, aex, k); ez = lerp(ez, aez, k);

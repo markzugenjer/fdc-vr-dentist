@@ -103,6 +103,48 @@ export class Sfx {
     }
   }
 
+  /**
+   * A cute gibberish voice: a few quick sung syllables, like a cartoon character.
+   * pitch = base frequency (kids high, men low); tone = normal | angry | happy | sad.
+   */
+  voice(textStr, pitch = 220, tone = 'normal') {
+    const c = this.ctx;
+    if (!c || !textStr || /^[(Z]/.test(textStr)) return; // no voice for "(waiting...)" or "Zzz"
+    const letters = textStr.replace(/[^a-zA-Z]/g, '').length;
+    const n = Math.max(2, Math.min(9, Math.round(letters / 3.2)));
+    const yell = tone === 'angry';
+    let t = c.currentTime + 0.02;
+    for (let i = 0; i < n; i++) {
+      const dur = 0.07 + Math.random() * 0.05;
+      let f = pitch * (0.85 + Math.random() * 0.35);
+      if (tone === 'happy') f *= 1 + (i / n) * 0.3;
+      if (tone === 'sad') f *= 1 - (i / n) * 0.25;
+      if (yell) f *= 1.2;
+      const o = c.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.linearRampToValueAtTime(f * (yell ? 0.75 : 1.06), t + dur);
+      const form = c.createBiquadFilter();
+      form.type = 'bandpass';
+      form.frequency.value = 650 + Math.random() * 1000; // a different "vowel" each syllable
+      form.Q.value = 2.5;
+      const vol = yell ? 0.1 : 0.06;
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(form).connect(g).connect(this.master);
+      const dry = c.createGain();
+      dry.gain.setValueAtTime(0.0001, t);
+      dry.gain.exponentialRampToValueAtTime(vol * 0.3, t + 0.015);
+      dry.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(dry).connect(this.master);
+      o.start(t);
+      o.stop(t + dur + 0.02);
+      t += dur + 0.025 + Math.random() * 0.03;
+    }
+  }
+
   /** Start (on = true) or stop a looping tool sound. Safe to call every frame. */
   loop(kind, on) {
     const c = this.ctx;

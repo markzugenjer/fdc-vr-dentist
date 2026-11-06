@@ -119,7 +119,9 @@ const BUILD = {
   },
   drill(g) {
     // contra-angle handpiece: hose connector, slim body, angled neck, head with the bur pointing down
-    g.add(rod([[0, -0.03, 0.03], [0, -0.006, 0.014], [0, 0, 0.0]], 0.0065, GREY));
+    const hose = rod([[0, -0.03, 0.03], [0, -0.006, 0.014], [0, 0, 0.0]], 0.0065, GREY);
+    hose.userData.noGold = true;
+    g.add(hose);
     g.add(lathe([[0.0075, 0], [0.0095, 0.006], [0.0105, 0.02], [0.01, 0.07], [0.0082, 0.11], [0.0065, 0.13]], WHITE));
     g.add(at(cyl(0.0107, 0.0107, 0.006, mat(P.mint), 18), 0, 0, -0.03));
     g.add(at(cyl(0.0102, 0.0102, 0.0015, STEEL, 18), 0, 0, -0.018));
@@ -391,7 +393,7 @@ export class ToolTray {
   setGold(on) {
     const d = this.tools.drill.group;
     d.traverse((o) => {
-      if (!o.isMesh) return;
+      if (!o.isMesh || o.userData.noGold) return;
       if (!o.userData.orig) o.userData.orig = o.material;
       o.material = on ? GOLD : o.userData.orig;
     });
@@ -442,4 +444,4 @@ export class ToolTray {
 }
 const _p = new THREE.Vector3();
 const _q = new THREE.Quaternion();
-const GOLD = mat('#f2c14e', { metalness: 0.9, roughness: 0.25, emissive: '#6b4b00', emissiveIntensity: 0.2 });
+const GOLD = mat('#f7d26b', { metalness: 0.45, roughness: 0.28, emissive: '#7a5a00', emissiveIntensity: 0.25 });

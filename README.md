@@ -29,6 +29,22 @@ Built with Three.js + WebXR, in soft green, pink and white. Everything (room, ch
 
 Funny moments can happen during treatment: a sneeze that knocks your tool back to the tray, a phone call that pauses the work, a patient falling asleep (+30 if you finish without waking them), or hiccups.
 
+Some adults come with **two problems** (for example scaling + a filling). The card shows both treatments; you choose the order, and one mirror check covers both. +100 bonus.
+
+If you hesitate too long on a step (about 9 seconds without the right tool), Suster Nana hands it to you, for −20 points.
+
+## Life in the clinic
+
+- Every character talks in a little gibberish voice (kids high, adults lower, louder when they're hurt or angry).
+- Patients on the bench scroll their phone, yawn and stretch, swing their legs or chat with each other. Suster Nana tidies up between patients.
+- After treatment, the patient checks their new smile in a hand mirror.
+- The clock on the wall runs with the shift (from 08:00). Long shifts turn golden in the afternoon and dark in the evening, outside the window too.
+- A fish tank with swimming fish under the TV.
+
+## Dekorasi
+
+Spend stars on the clinic: wall colour, poster, plants, Suster Nana's uniform and the chair colour. Open it from the title screen (**Dekorasi**) or by pointing at the pink mirror on the left wall. Each button shows the next option and its price; pressing it buys (if needed) and uses it. Spending stars doesn't lower your rank.
+
 ## Ranks and unlocks
 
 Every star you earn is kept on the headset. The sign above the door shows your rank: Dokter Magang → Dokter Muda (8★) → Dokter Hebat (20★) → Dokter Spesialis (40★) → Dokter Gigi Legenda (70★).
@@ -121,6 +137,7 @@ src/game/sfx.js    synthesized sounds (drill, scaler, suction, ouch, door...)
 src/game/music.js  cheerful background music, synthesized live (F major, 116 BPM)
 src/game/boards.js X-ray screen, score TV, rank sign, FDC sign, unlockable decorations
 src/game/progress.js  stars, ranks, unlocks and the score board (saved on the headset)
+src/game/decor.js  Dekorasi: wall colours, posters, plants, uniform and chair colours
 ```
 
 ## Add a treatment

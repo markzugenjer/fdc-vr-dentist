@@ -8,7 +8,8 @@ import { Effects } from './effects.js';
 import { Music } from './music.js';
 import { buildBoards } from './boards.js';
 import { progress } from './progress.js';
-import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, FACTS, PERSONALITIES, TOOL_HINT, pick } from './cases.js';
+import { Decor, DECOR, DECOR_ORDER } from './decor.js';
+import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, FACTS, PERSONALITIES, TOOL_HINT, PAIRS, pick } from './cases.js';
 import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from '../core/ui.js';
 
 /**
@@ -63,6 +64,8 @@ export function createClinic(app) {
   assistant.root.position.set(-0.95, 0, -1.15);
   assistant.root.rotation.y = Math.atan2(0.95, 1.15);
   group.add(assistant.root);
+  assistant.onSay = (t, tone) => sfx.voice(t, 300, tone);
+  const decor = new Decor({ room, assistant, parent: group });
 
   const head = new THREE.Vector3(); // the player's head, updated every frame
   const tmp = new THREE.Vector3();
@@ -75,8 +78,15 @@ export function createClinic(app) {
   let mode = null; // tutorial | shift | event
   let paused = false;
   let patient = null; // { ...data, ch } in the chair
-  let work = null;
-  let caseId = null;
+  let work = null; // the active job's mouth visuals
+  let caseId = null; // the active job's treatment
+  let jobs = []; // one per treatment (two for patients with two problems)
+  let job = null; // the active job
+  let hes = 0; // seconds the dentist has been hesitating on this step
+  let helped = false;
+  let helpCost = 0;
+  let lastPointer = null;
+  let clinicTime = 9.5; // clinic clock (hours)
   let stepIdx = 0;
   let stepProgress = 0;
   let mistakes = 0;
@@ -110,6 +120,50 @@ export function createClinic(app) {
   const personality = () => PERSONALITIES[patient?.personality || 'normal'];
   const maxHearts = () => personality().hearts;
 
+  // ------------------------------------------------------------------ jobs (treatments in progress)
+  const stepsOf = (data) => (data.caseIds || [data.caseId]).reduce((a, id) => a + CASES[id].steps.length, 0);
+  function makeJobs(data, ch) {
+    const ids = data.caseIds || [data.caseId];
+    // build the scaling visuals last, so its yellow teeth win over the others' clean white
+    const order = [...ids].sort((a, b) => (a === 'scaling') - (b === 'scaling'));
+    const works = {};
+    for (const id of order) works[id] = new MouthWork(ch, id, fx, sfx);
+    const list = [];
+    for (const id of ids) {
+      let steps = CASES[id].steps;
+      // one mirror check is enough for both problems
+      if (list.length && steps[0].tool === 'mirror' && list.some((j) => j.steps[0].tool === 'mirror')) steps = steps.slice(1);
+      list.push({ caseId: id, steps, idx: 0, prog: 0, work: works[id], done: false });
+    }
+    return list;
+  }
+  function activate(j) {
+    if (!j || job === j) return;
+    if (job) { job.idx = stepIdx; job.prog = stepProgress; }
+    job = j;
+    caseId = j.caseId;
+    stepIdx = j.idx;
+    stepProgress = j.prog;
+    work = j.work;
+  }
+  const jIdx = (j) => (j === job ? stepIdx : j.idx);
+  const jProg = (j) => (j === job ? stepProgress : j.prog);
+  const curStep = (j) => (j && !j.done ? j.steps[jIdx(j)] : null);
+  /** The job whose current step uses this tool (the active one first): you choose the order. */
+  function jobFor(toolId) {
+    if (curStep(job)?.tool === toolId) return job;
+    return jobs.find((j) => curStep(j)?.tool === toolId) || null;
+  }
+  const firstOpen = () => (job && !job.done ? job : jobs.find((j) => !j.done));
+  function disposeJobs() {
+    for (const j of jobs) j.work.dispose();
+    jobs = [];
+    job = null;
+    work = null;
+  }
+  const totalSteps = () => jobs.reduce((a, j) => a + j.steps.length, 0);
+  const doneSteps = () => jobs.reduce((a, j) => a + (j.done ? j.steps.length : jIdx(j)), 0);
+
   // ------------------------------------------------------------------ panels
   const FRONT = new THREE.Vector3(0, 1.6, -1.25);
 
@@ -128,8 +182,61 @@ export function createClinic(app) {
   const bStart = btn('Mulai kerja', 'mint', -0.43, ROW1, () => start('shift'));
   const bEvent = btn('Mode Event', 'pink', 0, ROW1, () => start('event'));
   const bTut = btn('Tutorial', 'light', 0.43, ROW1, () => start('tutorial'));
-  const bHow = btn('Cara main', 'light', -0.22, ROW2, () => { bigContent = bigContent.kind === 'how' ? { kind: 'title' } : { kind: 'how' }; big.redraw(); bHow.userData.setLabel(bigContent.kind === 'how' ? 'Kembali' : 'Cara main'); });
-  const bLobby = btn('Lobby FDC', 'pink', 0.22, ROW2, () => toLobby());
+  const bHow = btn('Cara main', 'light', -0.43, ROW2, () => { bigContent = bigContent.kind === 'how' ? { kind: 'title' } : { kind: 'how' }; big.redraw(); bHow.userData.setLabel(bigContent.kind === 'how' ? 'Kembali' : 'Cara main'); });
+  const bDecor = btn('Dekorasi', 'light', 0, ROW2, () => openShop());
+  const bLobby = btn('Lobby FDC', 'pink', 0.43, ROW2, () => toLobby());
+
+  // ------------------------------------------------------------------ Dekorasi (clinic customization)
+  let shopMsg = '';
+  const shopRowY = (i) => 0.21 - i * 0.105;
+  const shopLabel = (cat) => {
+    const o = decor.next(cat);
+    return `Ganti → ${o.name}${decor.owns(cat, o.id) ? '' : ` (${o.price}★)`}`;
+  };
+  const shopBtns = DECOR_ORDER.map((cat, i) => {
+    const b = makeButton(app, { label: shopLabel(cat), tone: 'light', w: 0.56, h: 0.095, onSelect: () => shopPress(cat) });
+    b.position.set(FRONT.x + 0.3, FRONT.y + shopRowY(i), FRONT.z + 0.02);
+    group.add(b);
+    return b;
+  });
+  const bShopBack = btn('Kembali', 'mint', 0, ROW1, () => { bigContent = { kind: 'title' }; big.redraw(); layout(); });
+  function refreshShop() { DECOR_ORDER.forEach((cat, i) => shopBtns[i].userData.setLabel(shopLabel(cat))); big.redraw(); }
+  function openShop() {
+    if (state !== 'title') { sfx.play('click'); return; }
+    shopMsg = 'Tekan tombol untuk ganti. Barang baru dibeli dengan bintang.';
+    bigContent = { kind: 'shop' };
+    refreshShop();
+    layout();
+  }
+  function shopPress(cat) {
+    const r = decor.advance(cat);
+    if (r.ok) {
+      sfx.play(r.bought ? 'unlock' : 'click');
+      shopMsg = r.bought ? `Dibeli: ${DECOR[cat].label} ${r.option.name}!` : `Dipakai: ${DECOR[cat].label} ${r.option.name}`;
+      if (r.bought) { assistant.act('clap', 1.4); assistant.say('Cantik, Dok!', 1.4); }
+      if (cat === 'uniform') { assistant.act('cheer', 1.2); }
+    } else {
+      sfx.play('heart');
+      shopMsg = `${r.option.name} butuh ${r.option.price}★ (kurang ${r.need}★). Main lagi untuk dapat bintang!`;
+    }
+    refreshShop();
+  }
+  // a mirror on the left wall also opens Dekorasi
+  const decoMirror = new THREE.Group();
+  const frameM = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.035, 10, 40), new THREE.MeshStandardMaterial({ color: P.pinkDeep, roughness: 0.4 }));
+  const glassM = new THREE.Mesh(new THREE.CircleGeometry(0.3, 40), new THREE.MeshStandardMaterial({ color: '#eaf4f8', metalness: 0.8, roughness: 0.08, emissive: '#d8ecf4', emissiveIntensity: 0.35 }));
+  frameM.scale.y = glassM.scale.y = 1.3;
+  decoMirror.add(frameM, glassM);
+  const decoLabel = makePanel(0.36, 0.09, (c, W, H) => {
+    card(c, W, H, { r: 0.45, fill: P.pinkSoft, stroke: P.pinkDeep, lw: 6 });
+    text(c, 'Dekorasi', W / 2, H * 0.66, { size: H * 0.5, weight: 800, color: P.pinkDeep, align: 'center' });
+  });
+  decoLabel.mesh.position.y = -0.5;
+  decoMirror.add(decoLabel.mesh);
+  decoMirror.position.set(-2.36, 1.55, -2.15);
+  decoMirror.rotation.y = Math.PI / 2;
+  group.add(decoMirror);
+  app.addTarget(glassM, { onSelect: () => openShop() });
   const bNext = btn('Pasien berikutnya', 'mint', -0.22, ROW1, () => nextPatient(), 0.52);
   const bAgain = btn('Main lagi', 'mint', -0.43, ROW1, () => start(mode === 'tutorial' ? 'shift' : mode), 0.4);
   const bMenu = btn('Menu', 'light', 0, ROW1, () => toTitle(), 0.4);
@@ -205,9 +312,11 @@ export function createClinic(app) {
     const t = state === 'title';
     const r = state === 'result';
     const f = state === 'final';
+    const shop = t && bigContent.kind === 'shop';
     big.mesh.visible = t || r || f;
-    show([bStart, bEvent, bTut, bHow], t);
-    bLobby.visible = t && FROM_LOBBY;
+    show([bStart, bEvent, bTut, bHow, bDecor], t && !shop);
+    show([...shopBtns, bShopBack], shop);
+    bLobby.visible = t && !shop && FROM_LOBBY;
     bNext.visible = r;
     show([bAgain, bMenu], f);
     bLobby2.visible = f && FROM_LOBBY;
@@ -254,6 +363,15 @@ export function createClinic(app) {
       if (best) text(c, `Skor terbaik: ${best}`, pad, H * 0.72, { size: H * 0.045, weight: 700, color: P.muted });
       const nu = progress.nextUnlock();
       if (nu) text(c, `Hadiah berikutnya di ★ ${nu.stars}: ${nu.name}`, W - pad, H * 0.72, { size: H * 0.042, weight: 600, color: P.muted, align: 'right' });
+    } else if (d.kind === 'shop') {
+      text(c, 'Dekorasi Klinik', pad, H * 0.12, { size: H * 0.08, weight: 800, color: P.mintDark });
+      text(c, `Bintangmu: ★ ${decor.wallet}`, W - pad, H * 0.12, { size: H * 0.06, weight: 800, color: '#d9a32c', align: 'right' });
+      DECOR_ORDER.forEach((cat, i) => {
+        const y = ((0.39 - shopRowY(i)) / 0.78) * H + H * 0.018;
+        text(c, DECOR[cat].label, pad, y, { size: H * 0.048, weight: 800, color: P.pinkDeep });
+        text(c, decor.current(cat).name, pad + W * 0.17, y, { size: H * 0.046, color: P.ink, maxWidth: W * 0.22 });
+      });
+      text(c, shopMsg, W / 2, H * 0.92, { size: H * 0.04, weight: 600, color: P.muted, align: 'center', maxWidth: W - pad * 2 });
     } else if (d.kind === 'how') {
       text(c, 'Cara main', pad, H * 0.13, { size: H * 0.08, weight: 800, color: P.mintDark });
       const lines = [
@@ -275,7 +393,7 @@ export function createClinic(app) {
       drawStars(c, W / 2, H * 0.25, H * 0.06, r.stars);
       const rows = r.left
         ? [['Langkah selesai', `${r.stepsDone} / ${r.steps}`], ['Poin', `+${r.points}`]]
-        : [['Perawatan', `+${r.base}`], ['Tanpa salah', r.perfect ? `+${r.perfect}` : '-'], ['Bonus cepat', `+${r.speed}`], ...(r.extra ? [[r.extraLabel, `+${r.extra}`]] : []), ['Salah alat', r.penalty ? `-${r.penalty}` : '0'], ...(r.mult > 1 ? [['Pengali', `×${r.mult}`]] : [])];
+        : [['Perawatan', `+${r.base}`], ['Tanpa salah', r.perfect ? `+${r.perfect}` : '-'], ['Bonus cepat', `+${r.speed}`], ...(r.extra ? [[r.extraLabel, `+${r.extra}`]] : []), [r.helped ? 'Salah alat / dibantu' : 'Salah alat', r.penalty ? `-${r.penalty}` : '0'], ...(r.mult > 1 ? [['Pengali', `×${r.mult}`]] : [])];
       rows.forEach(([a, b], i) => {
         const y = H * 0.36 + i * H * 0.06;
         text(c, a, W * 0.28, y, { size: H * 0.045, color: P.muted });
@@ -321,25 +439,25 @@ export function createClinic(app) {
       text(c, `Skor ${shift.score}`, W - pad, H * 0.94, { size: H * 0.038, weight: 800, color: P.mintDark, align: 'right' });
       return;
     }
-    const cs = CASES[caseId];
+    // the treatments shown on the card (before the jobs exist, straight from the patient data)
+    const shown = jobs.length ? jobs : (patient.caseIds || [patient.caseId]).map((id) => ({ caseId: id, steps: CASES[id].steps, idx: 0, prog: 0 }));
+    const two = shown.length > 1;
     // hearts = wrong tools left
     const hearts = maxHearts();
     for (let i = 0; i < hearts; i++) drawHeart(c, W - pad - i * H * 0.06, H * 0.065, H * 0.022, i < hearts - mistakes);
     text(c, patient.name, pad, H * 0.16, { size: H * 0.065, weight: 800 });
-    const tag = PERSONALITIES[patient.personality].label;
+    const tag = two ? '2 masalah' : PERSONALITIES[patient.personality].label;
     if (tag) {
-      c.font = `800 ${Math.round(H * 0.032)}px system-ui`;
-      const nw = c.measureText(patient.name).width;
       c.font = `800 ${Math.round(H * 0.065)}px system-ui`;
-      const x = pad + c.measureText(patient.name).width + W * 0.03;
-      void nw;
+      const x = Math.min(W - pad - W * 0.2, pad + c.measureText(patient.name).width + W * 0.03);
       roundRect(c, x, H * 0.12, W * 0.2, H * 0.05, H * 0.025);
-      c.fillStyle = patient.personality === 'vip' ? P.gold : P.pinkSoft; c.fill();
-      text(c, tag, x + W * 0.1, H * 0.157, { size: H * 0.03, weight: 800, color: P.ink, align: 'center' });
+      c.fillStyle = two ? P.pinkDeep : patient.personality === 'vip' ? P.gold : P.pinkSoft; c.fill();
+      text(c, tag, x + W * 0.1, H * 0.157, { size: H * 0.03, weight: 800, color: two ? '#fff' : P.ink, align: 'center' });
     }
     roundRect(c, pad, H * 0.19, W * 0.62, H * 0.055, H * 0.027);
     c.fillStyle = P.mintSoft; c.fill();
-    text(c, cs.title, pad + W * 0.03, H * 0.229, { size: H * 0.036, weight: 700, color: P.mintDark });
+    const title = two ? shown.map((j) => CASES[j.caseId].title.split(' ')[0]).join(' + ') : CASES[shown[0].caseId].title;
+    text(c, title, pad + W * 0.03, H * 0.229, { size: H * 0.036, weight: 700, color: P.mintDark, maxWidth: W * 0.57 });
     // patience bar
     text(c, 'Sabar', W - pad - W * 0.25, H * 0.229, { size: H * 0.03, weight: 700, color: P.muted, align: 'right' });
     roundRect(c, W - pad - W * 0.23, H * 0.207, W * 0.23, H * 0.03, H * 0.015);
@@ -347,44 +465,53 @@ export function createClinic(app) {
     roundRect(c, W - pad - W * 0.23, H * 0.207, Math.max(0.001, W * 0.23 * patience), H * 0.03, H * 0.015);
     c.fillStyle = patience > 0.5 ? P.mintDeep : patience > 0.25 ? P.gold : P.red; c.fill();
 
-    c.font = `italic 500 ${Math.round(H * 0.034)}px system-ui`;
-    const q = wrap(c, `"${patient.complaint}"`, W - pad * 2).slice(0, 2);
-    q.forEach((l, i) => text(c, l, pad, H * 0.3 + i * H * 0.045, { size: H * 0.034, weight: 500, color: P.muted }));
-    let y = H * 0.42;
+    c.font = `italic 500 ${Math.round(H * 0.032)}px system-ui`;
+    const q = wrap(c, `"${patient.complaint}"`, W - pad * 2).slice(0, two ? 1 : 2);
+    q.forEach((l, i) => text(c, l, pad, H * 0.3 + i * H * 0.042, { size: H * 0.032, weight: 500, color: P.muted }));
+    let y = two ? H * 0.37 : H * 0.42;
+    const rowH = two ? H * 0.056 : H * 0.072;
     if (patient.personality === 'scared') {
       const now = state === 'calm';
-      drawStep(c, W, H, pad, y, 'Tenangkan pasien (laser + trigger ke pasien)', !now && calmLeft <= 0, now, '♥', now ? 1 - calmLeft / PERSONALITIES.scared.calm : 0);
-      y += H * 0.072;
+      drawStep(c, W, H, pad, y, 'Tenangkan pasien (laser + trigger ke pasien)', !now && calmLeft <= 0, now, '♥', now ? 1 - calmLeft / PERSONALITIES.scared.calm : 0, two);
+      y += rowH;
     }
-    cs.steps.forEach((st, i) => {
-      const done = i < stepIdx;
-      const now = i === stepIdx && (state === 'treat' || state === 'react');
-      let label = st.text;
-      if (mode === 'tutorial' && now) label += ` → ${st.tool === 'xray' ? 'Layar Rontgen' : TOOL_INFO[st.tool].name}`;
-      drawStep(c, W, H, pad, y, label, done, now, `${i + 1}`, now ? stepProgress : 0);
-      y += H * 0.072;
-    });
+    for (const j of shown) {
+      if (two) {
+        text(c, `${j.done ? '✓ ' : ''}${CASES[j.caseId].title.toUpperCase()}`, pad, y, { size: H * 0.027, weight: 900, color: j.done ? P.mintDeep : P.pinkDeep });
+        y += H * 0.044;
+      }
+      j.steps.forEach((st, i) => {
+        const idx = jIdx(j);
+        const done = j.done || i < idx;
+        const now = !j.done && i === idx && (!two || j === job) && (state === 'treat' || state === 'react');
+        let label = st.text;
+        if (mode === 'tutorial' && now) label += ` → ${st.tool === 'xray' ? 'Layar Rontgen' : TOOL_INFO[st.tool].name}`;
+        drawStep(c, W, H, pad, y, label, done, now, `${i + 1}`, now ? jProg(j) : 0, two);
+        y += rowH;
+      });
+    }
     text(c, `Waktu ${fmt(elapsed)}`, pad, H * 0.95, { size: H * 0.036, weight: 700, color: P.muted });
     if (comboMult() > 1) text(c, `COMBO ×${comboMult()}`, W / 2, H * 0.95, { size: H * 0.036, weight: 900, color: P.pinkDeep, align: 'center' });
     text(c, `Skor ${shift.score}`, W - pad, H * 0.95, { size: H * 0.036, weight: 800, color: P.mintDark, align: 'right' });
   }
-  function drawStep(c, W, H, pad, y, label, done, now, mark, prog) {
+  function drawStep(c, W, H, pad, y, label, done, now, mark, prog, small) {
+    const k = small ? 0.82 : 1;
     if (now) {
-      roundRect(c, pad * 0.6, y - H * 0.04, W - pad * 1.2, H * 0.064, H * 0.026);
+      roundRect(c, pad * 0.6, y - H * 0.04 * k, W - pad * 1.2, H * 0.064 * k, H * 0.026 * k);
       c.fillStyle = P.pinkSoft; c.fill();
-      roundRect(c, pad * 0.6, y + H * 0.018, (W - pad * 1.2) * prog, H * 0.007, H * 0.0035);
+      roundRect(c, pad * 0.6, y + H * 0.018 * k, (W - pad * 1.2) * prog, H * 0.007, H * 0.0035);
       c.fillStyle = P.pinkDeep; c.fill();
     }
     c.beginPath();
-    c.arc(pad + H * 0.018, y - H * 0.01, H * 0.019, 0, Math.PI * 2);
+    c.arc(pad + H * 0.018, y - H * 0.01 * k, H * 0.019 * k, 0, Math.PI * 2);
     c.fillStyle = done ? P.mintDeep : now ? P.pinkDeep : '#e3e9e6';
     c.fill();
-    text(c, done ? '✓' : mark, pad + H * 0.018, y, { size: H * 0.03, weight: 800, color: done || now ? '#fff' : P.muted, align: 'center' });
-    text(c, label, pad + H * 0.055, y, { size: H * 0.034, weight: now ? 800 : 500, color: done ? P.muted : P.ink, maxWidth: W - pad * 2 - H * 0.06 });
+    text(c, done ? '✓' : mark, pad + H * 0.018, y, { size: H * 0.03 * k, weight: 800, color: done || now ? '#fff' : P.muted, align: 'center' });
+    text(c, label, pad + H * 0.055, y, { size: H * 0.034 * k, weight: now ? 800 : 500, color: done ? P.muted : P.ink, maxWidth: W - pad * 2 - H * 0.06 });
   }
   let cardKey = '';
   function refreshCard(force) {
-    const key = `${caseId}|${stepIdx}|${Math.round(stepProgress * 20)}|${mistakes}|${Math.floor(elapsed)}|${state}|${shift.score}|${served}|${Math.round(patience * 40)}|${Math.ceil(eventLeft)}|${calmLeft}|${combo}|${waiting.length}`;
+    const key = `${jobs.map((j) => (j.done ? 'd' : jIdx(j))).join(',')}|${caseId}|${stepIdx}|${Math.round(stepProgress * 20)}|${mistakes}|${Math.floor(elapsed)}|${state}|${shift.score}|${served}|${Math.round(patience * 40)}|${Math.ceil(eventLeft)}|${calmLeft}|${combo}|${waiting.length}`;
     if (!force && key === cardKey) return;
     cardKey = key;
     cardPanel.redraw();
@@ -409,14 +536,16 @@ export function createClinic(app) {
     held.set(pointer, tool);
     sfx.play('pick');
     haptic(pointer, 0.3, 40);
+    lastPointer = pointer;
+    if (jobFor(tool.id)) hes = 0;
     if (mode === 'tutorial' && state === 'treat') {
-      const want = CASES[caseId].steps[stepIdx]?.tool;
+      const want = curStep(job)?.tool;
       if (tool.id === want) { tray.highlight(null); assistant.say('Bagus! Dekatkan ujungnya ke cincin pink di mulut pasien, lalu tahan.', 3.2); }
     }
   };
   function returnTool(tool) {
     if (!tool || tool.home) return;
-    if (tool.id === 'forceps') work?.releasePulled();
+    if (tool.id === 'forceps') for (const j of jobs) j.work.releasePulled();
     held.delete(tool.pointer);
     tray.putBack(tool);
     sfx.loop(tool.sound || 'none', false);
@@ -456,8 +585,9 @@ export function createClinic(app) {
   // the X-ray screen
   boards.onXray = () => {
     if (paused) return;
-    const step = caseId && CASES[caseId].steps[stepIdx];
-    if (state === 'treat' && step?.tool === 'xray' && !boards.xray.scanning) {
+    const xj = jobFor('xray');
+    if (state === 'treat' && xj && !boards.xray.scanning) {
+      activate(xj);
       boards.xray.startScan();
       sfx.play('scan');
     } else if (!boards.xray.scanning && caseId) {
@@ -466,8 +596,9 @@ export function createClinic(app) {
     } else sfx.play('click');
   };
   boards.onScanDone = () => {
-    const step = caseId && CASES[caseId].steps[stepIdx];
-    if (state === 'treat' && step?.tool === 'xray') {
+    const xj = jobFor('xray');
+    if (state === 'treat' && xj) {
+      activate(xj);
       work?.progress('mirror', 1, 0);
       finishStep(null);
       assistant.say('Itu dia gigi yang sakit, Dok!', 2);
@@ -490,7 +621,8 @@ export function createClinic(app) {
       const f = forced.shift();
       const base = f.personality === 'kid' ? KIDS[0] : PATIENTS[Math.floor(Math.random() * PATIENTS.length)];
       const look = { ...base.look, ...(f.personality === 'vip' ? { shades: true, top: '#f2d27a' } : {}) };
-      return { name: base.name, look, personality: f.personality, caseId: f.caseId, complaint: pick(CASES[f.caseId].complaints) };
+      const ids = f.caseIds || [f.caseId];
+      return { name: base.name, look, personality: f.personality, caseId: ids[0], caseIds: ids.length > 1 ? ids : undefined, complaint: ids.map((id) => pick(CASES[id].complaints)).join(' Terus... ') };
     }
     if (mode === 'tutorial') return { ...PATIENTS[0], personality: 'normal', caseId: 'scaling', complaint: CASES.scaling.complaints[0] };
     const roll = Math.random();
@@ -504,14 +636,17 @@ export function createClinic(app) {
       ? ['checkup', 'checkup', 'filling', 'scaling']
       : Object.keys(CASES).filter((k) => !CASES[k].kidsOnly);
     const cid = pick(cases);
+    // some adults come with two problems at once (harder, more points)
+    const pair = personality !== 'kid' && Math.random() < 0.25 ? pick(PAIRS) : null;
     const look = { ...base.look };
     if (personality === 'vip') { look.shades = true; look.top = '#f2d27a'; }
     return {
       name: personality === 'vip' ? `${base.name} (VIP)` : base.name,
       look,
       personality,
-      caseId: cid,
-      complaint: pick(CASES[cid].complaints),
+      caseId: pair ? pair[0] : cid,
+      caseIds: pair || undefined,
+      complaint: pair ? `${pick(CASES[pair[0]].complaints)} Terus... ${pick(CASES[pair[1]].complaints).toLowerCase()}` : pick(CASES[cid].complaints),
     };
   }
 
@@ -519,6 +654,10 @@ export function createClinic(app) {
     const pers = PERSONALITIES[data.personality];
     const ch = new Character({ height: pers.height || 1.0 + Math.random() * 0.1, ...data.look });
     ch.onStep = () => sfx.play('footstep');
+    // a little gibberish voice: kids high, long hair a bit higher, others lower
+    const female = ['long', 'bob', 'pony', 'bun'].includes(data.look.hairStyle);
+    const pitch = (data.personality === 'kid' ? 420 : female ? 255 : 150) * (0.9 + Math.random() * 0.2);
+    ch.onSay = (t, tone) => sfx.voice(t, pitch, tone);
     group.add(ch.root);
     return ch;
   }
@@ -536,8 +675,8 @@ export function createClinic(app) {
     const data = makePatientData();
     if (mode === 'shift') spawned++;
     const ch = newCharacter(data);
-    const max = (40 + CASES[data.caseId].steps.length * 6) * PERSONALITIES[data.personality].patience;
-    const w = { ...data, ch, seat, patience: 1, max, bar: makeBar(), state: 'walking' };
+    const max = (40 + stepsOf(data) * 6) * PERSONALITIES[data.personality].patience;
+    const w = { ...data, ch, seat, patience: 1, max, bar: makeBar(), state: 'walking', lookVec: new THREE.Vector3() };
     w.bar.visible = false;
     group.add(w.bar);
     waiting.push(w);
@@ -561,8 +700,61 @@ export function createClinic(app) {
     if (state === 'idle') callNext();
   }
 
+  // ------------------------------------------------------------------ life on the bench
+  const PHONE_GEO = new THREE.BoxGeometry(0.035, 0.065, 0.007);
+  const PHONE_MAT = new THREE.MeshStandardMaterial({ color: '#2e3b36', emissive: '#7fd0ff', emissiveIntensity: 0.25, roughness: 0.3 });
+  function benchIdle(w, dt) {
+    const ch = w.ch;
+    ch.swingLegs = w.personality === 'kid' || w.idle === 'legs';
+    if (w.idle) { w.idleLeft -= dt; if (w.idleLeft <= 0) endIdle(w); }
+    w.idleT = (w.idleT ?? 1 + Math.random() * 3) - dt;
+    if (w.idleT <= 0 && !w.idle) {
+      w.idleT = 5 + Math.random() * 5;
+      const other = waiting.find((o) => o !== w && o.state === 'seated');
+      startIdle(w, pick(other ? ['phone', 'yawn', 'legs', 'chat', 'chat'] : ['phone', 'yawn', 'legs', 'phone']), other);
+    }
+    // the bench faces -X: the phone is in front of them and a little down
+    if (w.idle === 'phone') ch.lookAt(ch.headWorld(w.lookVec).add(_phoneLook));
+    else if (w.idle === 'chat' && w.other?.ch && waiting.includes(w.other)) ch.lookAt(w.other.ch.headWorld(w.lookVec));
+    else ch.lookAt(head);
+  }
+  const _phoneLook = new THREE.Vector3(-0.3, -0.45, 0);
+  function startIdle(w, kind, other) {
+    const ch = w.ch;
+    w.idle = kind;
+    if (kind === 'phone') {
+      ch.holdItem(new THREE.Mesh(PHONE_GEO, PHONE_MAT));
+      ch.act('scroll', 4.2);
+      w.idleLeft = 4.2;
+    } else if (kind === 'yawn') {
+      ch.face('yawn');
+      ch.act('stretch', 1.8);
+      ch.say(pick(LINES.yawn), 1.4);
+      w.idleLeft = 1.8;
+    } else if (kind === 'legs') {
+      w.idleLeft = 4;
+    } else if (kind === 'chat') {
+      w.other = other;
+      ch.face('talk');
+      ch.say(pick(LINES.chat), 2.4);
+      w.idleLeft = 3;
+      // the other one looks back and laughs
+      if (!other.idle) { other.idle = 'chat'; other.other = w; other.idleLeft = 3; guard(wait(1.4).then(() => { if (waiting.includes(other)) { other.ch.face('happy'); other.ch.say('Hahaha!', 1.0, 'happy'); } })); }
+    }
+  }
+  function endIdle(w) {
+    if (!w.idle) return;
+    w.ch.dropItem();
+    w.ch.action = null;
+    w.ch.swingLegs = w.personality === 'kid';
+    w.ch.face(w.patience < 0.3 ? 'mad' : 'neutral');
+    w.idle = null;
+    w.other = null;
+  }
+
   /** A waiting patient gives up and leaves. */
   async function benchGiveUp(w) {
+    endIdle(w);
     w.state = 'leaving';
     waiting.splice(waiting.indexOf(w), 1);
     group.remove(w.bar);
@@ -649,6 +841,8 @@ export function createClinic(app) {
     let ch;
     let data;
     if (fromBench) {
+      endIdle(fromBench);
+      fromBench.ch.swingLegs = false;
       fromBench.state = 'called';
       waiting.splice(waiting.indexOf(fromBench), 1);
       group.remove(fromBench.bar);
@@ -681,7 +875,7 @@ export function createClinic(app) {
     if (my !== token) return;
     if (!xr()) mouthTarget = makeMouthTarget(ch);
     const pers = personality();
-    patienceMax = (30 + CASES[caseId].steps.length * 9) * pers.patience;
+    patienceMax = (30 + stepsOf(data) * 9) * pers.patience;
     patience = 1;
     ch.lookAt(head);
     ch.face('happy');
@@ -699,9 +893,16 @@ export function createClinic(app) {
     await ch.sitDown(SEAT);
     if (my !== token) return;
     room.chair.want = 1;
-    work = new MouthWork(ch, caseId, fx, sfx);
-    work.onCount = (n) => { if (n % 2 === 0 || n === 12) assistant.say(`${n}!`, 0.6); };
-    if (CASES[caseId].steps.some((s) => s.tool === 'xray')) boards.xray.show(caseId); else boards.xray.clear();
+    jobs = makeJobs(data, ch);
+    job = null;
+    activate(jobs[0]);
+    for (const j of jobs) j.work.onCount = (n) => { if (n % 2 === 0 || n === 12) assistant.say(`${n}!`, 0.6); };
+    const xj = jobs.find((j) => j.steps.some((st) => st.tool === 'xray'));
+    if (xj) boards.xray.show(xj.caseId); else boards.xray.clear();
+    hes = 0;
+    helped = false;
+    helpCost = 0;
+    if (jobs.length > 1) assistant.say('Pasien ini punya 2 masalah, Dok. Bebas mulai dari mana!', 3.2);
     assistant.lookAt(null);
     if (data.personality === 'scared') {
       state = 'calm';
@@ -752,7 +953,7 @@ export function createClinic(app) {
   }
 
   function tutorialStep() {
-    const step = CASES[caseId].steps[stepIdx];
+    const step = curStep(job);
     if (!step) return;
     if (step.tool === 'xray') { assistant.say('Tekan layar rontgen di sebelah kiri!', 3); return; }
     tray.highlight(step.tool);
@@ -767,11 +968,13 @@ export function createClinic(app) {
   // ------------------------------------------------------------------ treating
   function workOn(tool, dt, pointer, entering) {
     if (state !== 'treat') return;
-    const step = CASES[caseId].steps[stepIdx];
-    if (tool.id !== step.tool) {
+    const j = jobFor(tool.id);
+    if (!j) {
       if (entering) mistake(tool, pointer);
       return;
     }
+    activate(j);
+    const step = job.steps[stepIdx];
     if (entering) haptic(pointer, 0.5, 40);
     if (step.rhythm && !rhythmGreen) {
       // filing while the light is red hurts a little and loses some progress
@@ -798,8 +1001,10 @@ export function createClinic(app) {
   let rhythmOuchCool = 0;
 
   function finishStep(tool) {
-    const steps = CASES[caseId].steps;
+    const steps = job.steps;
     const step = steps[stepIdx];
+    hes = 0;
+    helped = false;
     if (tool) {
       work.done(step.tool, tool);
       sfx.loop(tool.sound || 'none', false);
@@ -811,7 +1016,16 @@ export function createClinic(app) {
     stepIdx++;
     stepProgress = 0;
     if (step.tool === 'syringe') { patient.ch.face('numb'); patient.ch.say(pick(LINES.numb), 1.6); guard(wait(1.8).then(() => { if (state === 'treat' && !sleeping) patient.ch.face('aaa'); })); }
-    if (stepIdx >= steps.length) { guard(treatmentDone()); return; }
+    if (stepIdx >= steps.length) {
+      job.done = true;
+      job.idx = stepIdx;
+      if (jobs.every((x) => x.done)) { guard(treatmentDone()); return; }
+      activate(firstOpen());
+      sfx.play('sparkle');
+      assistant.say(`Satu beres! Sekarang ${CASES[caseId].title.toLowerCase()}, Dok.`, 2.4);
+      if (mode === 'tutorial') tutorialStep();
+      return;
+    }
     if (mode === 'tutorial') { tutorialStep(); return; }
     if (Math.random() < 0.5) assistant.say(pick(LINES.stepOk), 1.3);
   }
@@ -841,7 +1055,7 @@ export function createClinic(app) {
       fx.emit('puff', tmp2.copy(h).add(new THREE.Vector3(0, 0.24, 0)), 6, { speed: 0.15, size: 0.07, up: 0.35, life: 1.0, grow: 1.5 });
     }
     assistant.act('facepalm', 1.1);
-    const want = CASES[caseId].steps[stepIdx].tool;
+    const want = curStep(firstOpen())?.tool || 'mirror';
     const right = want === 'xray' ? null : TOOL_INFO[want].name;
     refreshCard(true);
     guard((async () => {
@@ -857,6 +1071,21 @@ export function createClinic(app) {
       if (!tut && mistakes === maxHearts() - 1) ch.say(pick(LINES.lastChance), 2.0, 'angry');
       state = 'treat';
     })());
+  }
+
+  function nurseHands(id) {
+    const tool = tray.tools[id];
+    if (!tool || !tool.home) return;
+    const ptr = xr()
+      ? (lastPointer?.object ? lastPointer : app.pointers.controllers[1] || app.pointers.controllers[0])
+      : app.pointers.mouse;
+    if (!ptr) return;
+    assistant.act('give', 1.4);
+    assistant.face('smiley');
+    assistant.say(`${pick(LINES.nurseGive)} ${TOOL_INFO[id].name}.`, 2.2);
+    helpCost += 20;
+    tray.onPick(tool, ptr);
+    sfx.play('sparkle');
   }
 
   // ------------------------------------------------------------------ funny moments
@@ -907,27 +1136,41 @@ export function createClinic(app) {
     }
   }
 
+  function makeHandMirror() {
+    const g = new THREE.Group();
+    const pinkM = new THREE.MeshStandardMaterial({ color: P.pinkDeep, roughness: 0.4 });
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.09, 10), pinkM);
+    handle.position.y = -0.03;
+    const frame = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.009, 8, 24), pinkM);
+    frame.position.y = -0.13;
+    const glass = new THREE.Mesh(new THREE.CircleGeometry(0.055, 24), new THREE.MeshStandardMaterial({ color: '#eaf6ff', metalness: 0.9, roughness: 0.05, emissive: '#cfeaff', emissiveIntensity: 0.4, side: THREE.DoubleSide }));
+    glass.position.y = -0.13;
+    g.add(handle, frame, glass);
+    // the handle sits in the hand; the mirror sticks out past the fingers
+    return g;
+  }
+
   // ------------------------------------------------------------------ scoring and leaving
   function scorePatient(left) {
-    const steps = CASES[caseId].steps.length;
+    const steps = totalSteps();
     const par = 12 + steps * 6;
     const pers = personality();
-    const fact = pick(FACTS[caseId]);
+    const fact = pick(FACTS[(jobs[jobs.length > 1 ? Math.floor(Math.random() * jobs.length) : 0] || {}).caseId || caseId]);
     if (left) {
-      const points = stepIdx * 50;
-      return { name: patient.name, left: true, stars: 0, points, stepsDone: stepIdx, steps, fact, mult: 1 };
+      const points = doneSteps() * 50;
+      return { name: patient.name, left: true, stars: 0, points, stepsDone: doneSteps(), steps, fact, mult: 1 };
     }
     const base = steps * 100;
     const perfect = mistakes === 0 ? 100 : 0;
     const speed = Math.max(0, Math.round((par - elapsed) * 4));
-    const penalty = mistakes * 40;
-    const extra = calmBonus + (sleeping ? 30 : 0);
-    const extraLabel = calmBonus ? 'Bonus menenangkan' : sleeping ? 'Pasien tertidur pulas' : '';
+    const penalty = mistakes * 40 + helpCost;
+    const extra = calmBonus + (sleeping ? 30 : 0) + (jobs.length > 1 ? 100 : 0);
+    const extraLabel = jobs.length > 1 ? 'Bonus 2 masalah' : calmBonus ? 'Bonus menenangkan' : sleeping ? 'Pasien tertidur pulas' : '';
     if (mistakes === 0 && mode !== 'tutorial') combo++; else combo = 0;
     const mult = comboMult() * pers.points;
     const points = Math.max(0, Math.round((base + perfect + speed + extra - penalty) * mult));
     const stars = mistakes === 0 && elapsed <= par ? 3 : mistakes <= 1 ? 2 : 1;
-    return { name: patient.name, left: false, stars, points, base, perfect, speed, penalty, extra, extraLabel, mult: Math.round(mult * 10) / 10, fact };
+    return { name: patient.name, left: false, stars, points, base, perfect, speed, penalty, extra, extraLabel, helped: helpCost > 0, mult: Math.round(mult * 10) / 10, fact };
   }
 
   async function treatmentDone() {
@@ -939,6 +1182,15 @@ export function createClinic(app) {
     const r = scorePatient(false);
     finishPatient(r);
     ch.action = null;
+    // the hand-mirror moment: they check their new smile
+    ch.holdItem(makeHandMirror());
+    ch.act('mirror', 1.8);
+    ch.face('wow');
+    ch.say(pick(LINES.mirror), 1.7, 'happy');
+    sfx.play('sparkle');
+    for (let i = 0; i < 4; i++) guard(wait(0.2 + i * 0.35).then(() => { fx.emit('star', ch.mouthWorld(tmp), 4, { speed: 0.25, size: 0.03, life: 0.7, up: 0.12, spread: 0.06 }); if (i === 2) sfx.play('sparkle'); }));
+    await wait(1.8);
+    ch.dropItem();
     ch.face('happy');
     ch.act('cheer', 2.2);
     ch.jump = 1;
@@ -1004,7 +1256,7 @@ export function createClinic(app) {
     const pt = patient;
     if (calmTarget) { app.removeTarget(calmTarget); calmTarget = null; }
     if (mouthTarget) { app.removeTarget(mouthTarget); mouthTarget = null; }
-    if (work) { work.dispose(); work = null; }
+    disposeJobs();
     boards.xray.clear();
     patient = null;
     guard(walkOut(pt.ch, sad));
@@ -1073,7 +1325,7 @@ export function createClinic(app) {
     if (mode === 'event') {
       sfx.play('buzzer');
       // everyone still around goes home
-      if (patient) { const pt = patient; patient = null; if (work) { work.dispose(); work = null; } room.chair.want = 0; guard(walkOut(pt.ch, false)); }
+      if (patient) { const pt = patient; patient = null; disposeJobs(); room.chair.want = 0; guard(walkOut(pt.ch, false)); }
     }
     for (const w of [...waiting]) { waiting.splice(waiting.indexOf(w), 1); group.remove(w.bar); w.state = 'leaving'; walkers.add(w.ch); guard((async () => { await w.ch.standUp(w.seat.front); doorOpen(); await w.ch.walkTo([{ x: 1.7, z: -2.5 }, DOOR_IN, DOOR_OUT], { speed: 1.1 }); doorClose(); removeCharacter(w.ch); })()); }
     bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : SHIFT_PATIENTS };
@@ -1095,7 +1347,7 @@ export function createClinic(app) {
     returnAll();
     tray.highlight(null);
     sfx.stopAll();
-    if (work) { work.dispose(); work = null; }
+    disposeJobs();
     if (patient) { removeCharacter(patient.ch); patient = null; }
     for (const w of waiting) { removeCharacter(w.ch); group.remove(w.bar); }
     waiting.length = 0;
@@ -1120,6 +1372,7 @@ export function createClinic(app) {
     spawned = 0;
     combo = 0;
     eventLeft = EVENT_SECONDS;
+    clinicTime = 8;
     nextArrival = mode === 'tutorial' ? Infinity : 7;
     used.clear();
     bHow.userData.setLabel('Cara main');
@@ -1137,6 +1390,7 @@ export function createClinic(app) {
     mode = null;
     state = 'title';
     bigContent = { kind: 'title' };
+    clinicTime = 9.5;
     big.redraw();
     layout();
     boards.rank.redraw();
@@ -1162,6 +1416,7 @@ export function createClinic(app) {
     boards.xray.update(dt);
     boards.decor.update(dt, clock);
     boards.tv.set({ mode: state === 'title' ? null : mode === 'tutorial' ? null : mode, timeLeft: Math.ceil(eventLeft), score: shift.score, combo: comboMult() });
+    room.setTime(clinicTime);
     if (paused) return;
 
     clock += dt;
@@ -1170,6 +1425,8 @@ export function createClinic(app) {
       if (t.t <= 0) { timers.splice(timers.indexOf(t), 1); t.done(); }
     }
     const playing = mode && state !== 'title' && state !== 'final';
+    // the clinic day moves on: about one hour per 40 s (an event round runs 08:00 to ~14:00)
+    if (playing && state !== 'result') clinicTime = Math.min(19.5, clinicTime + dt / (mode === 'event' ? 30 : 40));
 
     // event clock
     if (playing && mode === 'event') {
@@ -1196,7 +1453,7 @@ export function createClinic(app) {
         if (w.patience <= 0) { guard(benchGiveUp(w)); continue; }
         if (w.patience < 0.3 && w.ch.faceName !== 'mad') { w.ch.face('mad'); w.ch.act('fist', 1); }
       }
-      w.ch.lookAt(head);
+      if (w.state === 'seated') benchIdle(w, dt); else w.ch.lookAt(head);
       w.ch.update(dt);
       if (w.bar.visible) {
         drawBar(w.bar, Math.max(0, w.patience));
@@ -1226,6 +1483,13 @@ export function createClinic(app) {
         patience -= dt / patienceMax;
         if (patience <= 0) { patience = 0; guard(leaveSad('bored')); }
       }
+      // hesitating too long: Suster Nana hands over the right tool (costs a few points)
+      if (state === 'treat' && mode !== 'tutorial') {
+        const want = curStep(firstOpen());
+        const holdingRight = [...held.values()].some((t) => jobFor(t.id));
+        if (want && want.tool !== 'xray' && !holdingRight) hes += dt; else hes = 0;
+        if (hes > 9 && !helped) { helped = true; nurseHands(want.tool); }
+      }
       // chatty patients keep talking
       if (state === 'treat' && patient.personality === 'chatty') {
         chatT -= dt;
@@ -1242,11 +1506,13 @@ export function createClinic(app) {
     const tool0 = [...held.values()][0];
     if (tool0) assistant.lookAt(tool0.tip.getWorldPosition(assistantLook));
     else if (!assistant.lookTarget || assistant.lookTarget === assistantLook) assistant.lookAt(head);
-    if (state === 'title' || state === 'final') {
+    if (state === 'title' || state === 'final' || state === 'idle' || state === 'result' || state === 'arriving') {
       idleT -= dt;
       if (idleT <= 0 && !assistant.action) {
         idleT = 5 + Math.random() * 4;
-        assistant.act(pick(['wave', 'thumbs', 'wave']), 1.8);
+        const busy = state !== 'title' && state !== 'final';
+        assistant.act(busy ? 'tidy' : pick(['wave', 'thumbs', 'tidy']), busy ? 2.4 : 1.8);
+        if (busy && Math.random() < 0.6) sfx.play('tick');
         assistant.face('smiley');
         if (state === 'title' && !progress.tutorialDone && Math.random() < 0.6) assistant.say('Baru pertama? Coba Tutorial dulu, Dok!', 2.6);
       }
@@ -1255,7 +1521,7 @@ export function createClinic(app) {
     if (assistant.faceName !== 'neutral' && !assistant.bubble.time && !assistant.action) assistant.face('neutral');
 
     // rhythm light for the root canal file
-    const step = caseId && CASES[caseId].steps[stepIdx];
+    const step = curStep(job);
     rhythmOn = !!(step?.rhythm && (state === 'treat' || state === 'react'));
     rhythmPanel.mesh.visible = rhythmOn;
     if (rhythmOuchCool > 0) rhythmOuchCool = Math.max(0, rhythmOuchCool - dt);
@@ -1275,7 +1541,9 @@ export function createClinic(app) {
       for (const [pointer, tool] of held) {
         tool.working = false;
         let inside = false;
-        const target = step && tool.id === step.tool && work ? work.target(step.tool, stepProgress) : null;
+        const tj = jobFor(tool.id);
+        const tstep = curStep(tj);
+        const target = tstep ? tj.work.target(tstep.tool, jProg(tj)) : null;
         if (target) {
           target.getWorldPosition(tmp3);
           ring.visible = true;
@@ -1302,8 +1570,8 @@ export function createClinic(app) {
         if (inside) workOn(tool, dt, pointer, entering);
         if (!tool.working && tool.sound) sfx.loop(tool.sound, false);
       }
-      work?.update(dt);
-    } else if (work) work.update(dt);
+      for (const j of jobs) j.work.update(dt);
+    } else for (const j of jobs) j.work.update(dt);
     if (playing) refreshCard();
 
     if (popT > 0) {
@@ -1324,13 +1592,14 @@ export function createClinic(app) {
   window.dentist = {
     get state() { return state; },
     get mode() { return mode; },
-    get step() { return CASES[caseId]?.steps[stepIdx]?.tool; },
+    get step() { return curStep(firstOpen())?.tool; },
+    get jobs() { return jobs; },
     get patient() { return patient?.ch; },
     get data() { return patient; },
     get waiting() { return waiting; },
     get shift() { return shift; },
     get combo() { return combo; },
-    tray, held, start, nextPatient, toTitle, boards, assistant,
+    tray, start, nextPatient, toTitle, boards, assistant,
     startShift: () => start('shift'),
     pick(id) { tray.onPick(tray.tools[id], app.pointers.mouse); },
     calm() { calmDown(app.pointers.mouse); },
@@ -1338,15 +1607,21 @@ export function createClinic(app) {
     funny(kind) { if (patient) guard(runFunny(kind)); },
     work(seconds = 1) {
       const t = held.get(app.pointers.mouse);
-      const s0 = stepIdx;
-      for (let i = 0; i < seconds * 30 && stepIdx === s0 && state === 'treat'; i++) {
-        if (CASES[caseId].steps[stepIdx].rhythm) { rhythmGreen = true; }
+      const j = t && jobFor(t.id);
+      const key = () => (j ? `${j.done}${jIdx(j)}` : '');
+      const s0 = key();
+      for (let i = 0; i < seconds * 30 && state === 'treat'; i++) {
+        if (curStep(j || job)?.rhythm) { rhythmGreen = true; }
         workOn(t, 1 / 30, app.pointers.mouse, i === 0);
+        if (!j || key() !== s0) break;
       }
     },
     skip(s) { for (const t of timers) t.t = Math.min(t.t, s ?? 0); },
     setEventLeft(v) { eventLeft = v; },
     force(list) { forced = list; },
+    openShop, shopPress, decor,
+    setClock(h) { clinicTime = h; },
+    get held() { return [...held.values()].map((t) => t.id); },
     get arrivalIn() { return nextArrival; },
     set arrivalIn(v) { nextArrival = v; },
   };

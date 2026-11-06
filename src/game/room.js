@@ -22,6 +22,7 @@ function mats() {
   const s = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.75, ...o });
   Object.assign(M, {
     wall: s(P.wall, { roughness: 0.95 }),
+    paint: s(P.wall, { roughness: 0.95 }), // the four walls (colour can be changed in Dekorasi)
     mint: s(P.mint, { roughness: 0.6 }),
     mintDeep: s(P.mintDeep, { roughness: 0.55 }),
     pink: s(P.pink, { roughness: 0.6 }),
@@ -91,7 +92,7 @@ export function buildRoom() {
     { x: maxX, z: cz, ry: -Math.PI / 2, len: D },
   ];
   for (const w of walls) {
-    const wall = put(still, new THREE.PlaneGeometry(w.len, h), m.wall, w.x, h / 2, w.z, 0, w.ry);
+    const wall = put(still, new THREE.PlaneGeometry(w.len, h), m.paint, w.x, h / 2, w.z, 0, w.ry);
     void wall;
     const off = 0.02;
     const nx = Math.sin(w.ry) * off;
@@ -142,7 +143,8 @@ export function buildRoom() {
     g.fillStyle = '#9fd6b5'; g.beginPath(); g.ellipse(140, 420, 260, 110, 0, 0, Math.PI * 2); g.fill();
     g.fillStyle = '#86c9a2'; g.beginPath(); g.ellipse(420, 430, 230, 100, 0, 0, Math.PI * 2); g.fill();
   });
-  put(group, new THREE.PlaneGeometry(1.3, 0.95), new THREE.MeshBasicMaterial({ map: sky }), minX + 0.01, 1.65, -0.9, 0, Math.PI / 2);
+  const skyMat = new THREE.MeshBasicMaterial({ map: sky });
+  put(group, new THREE.PlaneGeometry(1.3, 0.95), skyMat, minX + 0.01, 1.65, -0.9, 0, Math.PI / 2);
   for (const [y, len] of [[2.15, 1.42], [1.15, 1.42]]) put(still, new THREE.BoxGeometry(0.08, 0.07, len), m.white, minX + 0.03, y, -0.9);
   for (const z of [-0.9 - 0.68, -0.9 + 0.68, -0.9]) put(still, new THREE.BoxGeometry(0.08, 1.05, z === -0.9 ? 0.04 : 0.07), m.white, minX + 0.03, 1.65, z);
   for (const s of [-1, 1]) {
@@ -172,7 +174,7 @@ export function buildRoom() {
     g.strokeStyle = '#e98aa4'; g.lineWidth = 12; g.beginPath(); g.arc(300, 310, 46, 0.2, Math.PI - 0.2); g.stroke();
     g.fillStyle = 'rgba(244,138,168,0.5)'; g.beginPath(); g.arc(225, 330, 22, 0, Math.PI * 2); g.arc(375, 330, 22, 0, Math.PI * 2); g.fill();
   });
-  put(group, new THREE.PlaneGeometry(0.6, 0.8), new THREE.MeshBasicMaterial({ map: poster, transparent: true }), -0.3, 1.65, minZ + 0.02);
+  const posterMesh = put(group, new THREE.PlaneGeometry(0.6, 0.8), new THREE.MeshBasicMaterial({ map: poster, transparent: true }), -0.3, 1.65, minZ + 0.02);
 
   // --- cabinet with a sink (back left)
   const cab = { x: -1.35, z: minZ + 0.32 };
@@ -264,25 +266,108 @@ export function buildRoom() {
 
   mergeStill(still);
 
-  let minuteAngle = 0;
+  const fish = buildFishTank(group, m);
+  const hemiDay = hemi.intensity;
+  const sunDay = sun.intensity;
+  const DAY = { sky: new THREE.Color('#ffffff'), sun: new THREE.Color('#fff7ee') };
+  const EVE = { sky: new THREE.Color('#ffb98a'), sun: new THREE.Color('#ffc58f') };
+  const NIGHT = { sky: new THREE.Color('#41507e'), sun: new THREE.Color('#9fb0e0') };
+  const _c = new THREE.Color();
+  let clockHours = 9.5;
   return {
     group,
     floor,
     door,
     chair,
+    mats: m,
+    poster: posterMesh,
+    /** Clinic time of day in hours (8.0 = 08:00): moves the clock hands, the light and the sky. */
+    setTime(hours) {
+      clockHours = hours;
+      const h = hours % 12;
+      minPivot.rotation.z = -((hours % 1) * Math.PI * 2);
+      hourPivot.rotation.z = -(h / 12) * Math.PI * 2;
+      // 08-15 day, 15-17.5 golden evening, 17.5-19 into the night
+      const eve = THREE.MathUtils.clamp((hours - 15) / 2.5, 0, 1);
+      const night = THREE.MathUtils.clamp((hours - 17.5) / 1.5, 0, 1);
+      _c.copy(DAY.sky).lerp(EVE.sky, eve).lerp(NIGHT.sky, night);
+      skyMat.color.copy(_c);
+      sun.color.copy(DAY.sun).lerp(EVE.sun, eve).lerp(NIGHT.sun, night);
+      sun.intensity = sunDay * (1 - night * 0.6);
+      hemi.intensity = hemiDay * (1 - night * 0.25);
+    },
+    get time() { return clockHours; },
     update(dt) {
       door.amount += (door.want - door.amount) * (1 - Math.exp(-dt * 4));
       door.hinge.rotation.y = -door.amount * 1.45;
       chair.update(dt);
-      minuteAngle -= dt * 0.1;
-      minPivot.rotation.z = minuteAngle;
-      hourPivot.rotation.z = minuteAngle / 12 - 1.2;
+      fish.update(dt);
+    },
+  };
+}
+
+/** A small fish tank on a cabinet under the TV, with fish swimming in loops and bubbles. */
+function buildFishTank(parent, m) {
+  const g = new THREE.Group();
+  g.position.set(ROOM.maxX - 0.2, 0, -0.45);
+  put(g, box(0.34, 0.7, 0.62, 0.02), m.white, 0, 0.35, 0);
+  put(g, box(0.36, 0.03, 0.64, 0.01), m.mintDeep, 0, 0.715, 0);
+  const water = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.56), new THREE.MeshStandardMaterial({ color: '#8fd3f0', transparent: true, opacity: 0.35, roughness: 0.05, depthWrite: false }));
+  water.position.y = 0.88;
+  g.add(water);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.33, 0.58), new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.12, roughness: 0.02, depthWrite: false }));
+  glass.position.y = 0.895;
+  g.add(glass);
+  put(g, new THREE.BoxGeometry(0.28, 0.03, 0.56), new THREE.MeshStandardMaterial({ color: '#f3e3c3', roughness: 1 }), 0, 0.745, 0);
+  for (let i = 0; i < 4; i++) {
+    const weed = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.12 + (i % 2) * 0.06, 6), m.leaf);
+    weed.position.set(-0.06 + (i % 2) * 0.12, 0.8 + (i % 2) * 0.03, -0.2 + i * 0.13);
+    g.add(weed);
+  }
+  const fishes = [];
+  const cols = ['#ff9f6b', '#f7c95e', '#f48aa8', '#7fd0ff'];
+  for (let i = 0; i < 4; i++) {
+    const f = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: cols[i], roughness: 0.4 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), mat);
+    body.scale.set(0.6, 0.9, 1.4);
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.013, 0.022, 6), mat);
+    tail.rotation.x = -Math.PI / 2;
+    tail.position.z = 0.032;
+    f.add(body, tail);
+    f.userData = { r: 0.12 + i * 0.03, y: 0.83 + i * 0.045, speed: 0.6 + i * 0.15, phase: i * 1.7, tail };
+    g.add(f);
+    fishes.push(f);
+  }
+  const bubbleMat = new THREE.MeshBasicMaterial({ color: '#e8f8ff', transparent: true, opacity: 0.7 });
+  const bubbles = [];
+  for (let i = 0; i < 6; i++) {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.005, 6, 4), bubbleMat);
+    b.position.set(0.05, 0.76 + i * 0.05, 0.2);
+    g.add(b);
+    bubbles.push(b);
+  }
+  parent.add(g);
+  let t = 0;
+  return {
+    update(dt) {
+      t += dt;
+      for (const f of fishes) {
+        const u = f.userData;
+        const a = t * u.speed + u.phase;
+        f.position.set(Math.sin(a * 0.5) * 0.06, u.y + Math.sin(a * 1.3) * 0.015, Math.cos(a) * u.r * 1.6);
+        f.rotation.y = Math.atan2(Math.cos(a * 0.5) * 0.03, -Math.sin(a) * u.r * 1.6) + Math.PI;
+        u.tail.rotation.y = Math.sin(t * 12 + u.phase) * 0.5;
+      }
+      for (const b of bubbles) { b.position.y += dt * 0.08; if (b.position.y > 1.02) b.position.y = 0.76; }
     },
   };
 }
 
 function buildChair(m) {
   const group = new THREE.Group();
+  // the chair's own colours (can be changed in Dekorasi without touching the rest of the room)
+  m = { ...m, mint: m.mint.clone(), pink: m.pink.clone() };
   group.position.set(SEAT.x, 0, SEAT.z);
   // chair "forward" is +X
   put(group, new THREE.CylinderGeometry(0.25, 0.3, 0.05, 28), m.white, 0, 0.025, 0);
@@ -307,7 +392,7 @@ function buildChair(m) {
   group.add(legs);
   put(legs, box(0.56, 0.08, 0.42, 0.035), m.mint, 0.27, 0, 0);
   put(legs, box(0.06, 0.12, 0.38, 0.025), m.white, 0.57, 0.03, 0);
-  const chair = { group, back, legs, recline: 0, want: 0 };
+  const chair = { group, back, legs, recline: 0, want: 0, padMat: m.mint, accentMat: m.pink };
   chair.update = (dt) => {
     chair.recline += (chair.want - chair.recline) * (1 - Math.exp(-dt * 3));
     back.rotation.z = chair.recline * SEAT.recline + 0.05;

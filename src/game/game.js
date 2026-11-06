@@ -9,6 +9,7 @@ import { Music } from './music.js';
 import { buildBoards } from './boards.js';
 import { progress } from './progress.js';
 import { Decor, DECOR, DECOR_ORDER } from './decor.js';
+import { config, CHOICES } from './config.js';
 import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, FACTS, PERSONALITIES, TOOL_HINT, PAIRS, pick } from './cases.js';
 import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from '../core/ui.js';
 
@@ -23,8 +24,6 @@ import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from 
  *   - Shift: 5 patients, a result card after each one.
  *   - Event: 3 minutes, as many patients as you can, for a score board on the room TV.
  */
-const SHIFT_PATIENTS = 5;
-const EVENT_SECONDS = 180;
 const BENCH_SEATS = 2;
 const MOUTH_REACH = 0.075; // how close (m) the tool tip must be to the mouth in VR
 const TARGET_REACH = 0.035; // ...and to the exact tooth, for tooth-by-tooth steps
@@ -64,7 +63,7 @@ export function createClinic(app) {
   assistant.root.position.set(-0.95, 0, -1.15);
   assistant.root.rotation.y = Math.atan2(0.95, 1.15);
   group.add(assistant.root);
-  assistant.onSay = (t, tone) => sfx.voice(t, 300, tone);
+  assistant.onSay = (t, tone) => { if (config.voices) sfx.voice(t, 300, tone); };
   const decor = new Decor({ room, assistant, parent: group });
 
   const head = new THREE.Vector3(); // the player's head, updated every frame
@@ -118,7 +117,8 @@ export function createClinic(app) {
   const guard = (p) => p.catch((e) => { if (e !== CANCEL) console.error(e); });
   const comboMult = () => (combo >= 5 ? 3 : combo >= 3 ? 2 : combo >= 2 ? 1.5 : 1);
   const personality = () => PERSONALITIES[patient?.personality || 'normal'];
-  const maxHearts = () => personality().hearts;
+  // the hearts setting is for normal patients; scared ones get one less
+  const maxHearts = () => Math.max(1, config.hearts + (personality().hearts - 3));
 
   // ------------------------------------------------------------------ jobs (treatments in progress)
   const stepsOf = (data) => (data.caseIds || [data.caseId]).reduce((a, id) => a + CASES[id].steps.length, 0);
@@ -182,9 +182,82 @@ export function createClinic(app) {
   const bStart = btn('Mulai kerja', 'mint', -0.43, ROW1, () => start('shift'));
   const bEvent = btn('Mode Event', 'pink', 0, ROW1, () => start('event'));
   const bTut = btn('Tutorial', 'light', 0.43, ROW1, () => start('tutorial'));
-  const bHow = btn('Cara main', 'light', -0.43, ROW2, () => { bigContent = bigContent.kind === 'how' ? { kind: 'title' } : { kind: 'how' }; big.redraw(); bHow.userData.setLabel(bigContent.kind === 'how' ? 'Kembali' : 'Cara main'); });
-  const bDecor = btn('Dekorasi', 'light', 0, ROW2, () => openShop());
-  const bLobby = btn('Lobby FDC', 'pink', 0.43, ROW2, () => toLobby());
+  const bHow = btn('Cara main', 'light', -0.48, ROW2, () => { bigContent = bigContent.kind === 'how' ? { kind: 'title' } : { kind: 'how' }; big.redraw(); bHow.userData.setLabel(bigContent.kind === 'how' ? 'Kembali' : 'Cara main'); }, 0.3);
+  const bDecor = btn('Dekorasi', 'light', -0.16, ROW2, () => openShop(), 0.3);
+  const bSettings = btn('Pengaturan', 'light', 0.16, ROW2, () => openSettings(), 0.3);
+  const bLobby = btn('Lobby FDC', 'pink', 0.48, ROW2, () => toLobby(), 0.3);
+
+  // ------------------------------------------------------------------ Pengaturan (game settings)
+  const SET_CENTER = new THREE.Vector3(0, 1.62, -1.24);
+  const SET_TOP = 0.35; // first row, relative to the panel centre
+  const SET_TYPES_Y = SET_TOP - 7 * 0.07 - 0.06; // where the patient-type list starts
+  const setPanel = makePanel(1.5, 1.12, (c, W, H) => {
+    card(c, W, H, { r: 0.06, stroke: P.mint, lw: 10 });
+    const pad = W * 0.04;
+    text(c, 'Pengaturan', pad, H * 0.075, { size: H * 0.055, weight: 800, color: P.mintDark });
+    text(c, 'Tersimpan di headset.', W * 0.3, H * 0.075, { size: H * 0.026, color: P.muted });
+    text(c, 'Permainan', pad, H * 0.135, { size: H * 0.032, weight: 800, color: P.pinkDeep });
+    text(c, 'Perawatan yang muncul', W / 2 + pad, H * 0.135, { size: H * 0.032, weight: 800, color: P.pinkDeep });
+    text(c, 'Tipe pasien', W / 2 + pad, H * ((0.56 - (SET_TYPES_Y + 0.052)) / 1.12), { size: H * 0.032, weight: 800, color: P.pinkDeep });
+  });
+  setPanel.mesh.position.copy(SET_CENTER);
+  setPanel.mesh.visible = false;
+  group.add(setPanel.mesh);
+  const choiceLabel = (key) => {
+    const v = config[key];
+    const c = CHOICES[key]?.find?.((x) => (typeof x === 'object' ? x.id === v : x === v));
+    return typeof c === 'object' ? c.label : v;
+  };
+  const SETTINGS = [
+    ['patientsPerShift', () => `Pasien per shift: ${config.patientsPerShift}`],
+    ['eventMinutes', () => `Mode Event: ${config.eventMinutes} menit`],
+    ['patience', () => `Kesabaran pasien: ${choiceLabel('patience')}`],
+    ['hearts', () => `Salah alat maksimal: ${config.hearts}x`],
+    ['pairs', () => `Pasien 2 masalah: ${choiceLabel('pairs')}`],
+    ['funny', () => `Momen lucu: ${config.funny ? 'Nyala' : 'Mati'}`],
+    ['nurseHelp', () => `Bantuan Suster Nana: ${config.nurseHelp ? 'Nyala' : 'Mati'}`],
+    ['voices', () => `Suara pasien: ${config.voices ? 'Nyala' : 'Mati'}`],
+  ];
+  const setBtns = [];
+  const addSetBtn = (label, tone, x, y, w, onSelect) => {
+    const b = makeButton(app, { label, tone, w, h: 0.062, onSelect });
+    b.position.set(SET_CENTER.x + x, SET_CENTER.y + y, SET_CENTER.z + 0.02);
+    b.visible = false;
+    group.add(b);
+    setBtns.push(b);
+    return b;
+  };
+  const cycleBtns = SETTINGS.map(([key, label], i) => addSetBtn(label(), 'light', -0.36, SET_TOP - i * 0.078, 0.66, () => { config.cycle(key); sfx.play('click'); refreshSettings(); }));
+  const caseIds = Object.keys(CASES);
+  const caseLabel = (id) => `${config.cases[id] ? '✓' : '✗'}  ${CASES[id].title}${CASES[id].kidsOnly ? ' (anak)' : ''}`;
+  const caseBtns = caseIds.map((id, i) => addSetBtn(caseLabel(id), 'light', 0.37, SET_TOP - i * 0.07, 0.64, () => {
+    if (!config.toggle('cases', id)) { sfx.play('heart'); assistant.say('Minimal satu perawatan harus nyala, Dok!', 2); return; }
+    sfx.play('click');
+    refreshSettings();
+  }));
+  const TYPE_NAMES = { scared: 'Penakut', chatty: 'Cerewet', vip: 'VIP', kid: 'Anak-anak' };
+  const typeIds = Object.keys(TYPE_NAMES);
+  const typeLabel = (id) => `${config.types[id] ? '✓' : '✗'}  ${TYPE_NAMES[id]}`;
+  const typeBtns = typeIds.map((id, i) => addSetBtn(typeLabel(id), 'light', 0.37, SET_TYPES_Y - i * 0.068, 0.64, () => { config.toggle('types', id); sfx.play('click'); refreshSettings(); }));
+  addSetBtn('Kembali ke awal', 'pink', -0.36, SET_TOP - SETTINGS.length * 0.078 - 0.03, 0.66, () => { config.reset(); sfx.play('drop'); refreshSettings(); });
+  addSetBtn('Selesai ✓', 'mint', 0.56, 0.48, 0.28, () => closeSettings());
+  function refreshSettings() {
+    SETTINGS.forEach(([, label], i) => cycleBtns[i].userData.setLabel(label()));
+    caseIds.forEach((id, i) => caseBtns[i].userData.setLabel(caseLabel(id)));
+    typeIds.forEach((id, i) => typeBtns[i].userData.setLabel(typeLabel(id)));
+    big.redraw();
+  }
+  function openSettings() {
+    if (state !== 'title') { sfx.play('click'); return; }
+    bigContent = { kind: 'settings' };
+    refreshSettings();
+    layout();
+  }
+  function closeSettings() {
+    bigContent = { kind: 'title' };
+    big.redraw();
+    layout();
+  }
 
   // ------------------------------------------------------------------ Dekorasi (clinic customization)
   let shopMsg = '';
@@ -313,10 +386,13 @@ export function createClinic(app) {
     const r = state === 'result';
     const f = state === 'final';
     const shop = t && bigContent.kind === 'shop';
-    big.mesh.visible = t || r || f;
-    show([bStart, bEvent, bTut, bHow, bDecor], t && !shop);
+    const sets = t && bigContent.kind === 'settings';
+    big.mesh.visible = (t || r || f) && !sets;
+    setPanel.mesh.visible = sets;
+    show(setBtns, sets);
+    show([bStart, bEvent, bTut, bHow, bDecor, bSettings], t && !shop && !sets);
     show([...shopBtns, bShopBack], shop);
-    bLobby.visible = t && !shop && FROM_LOBBY;
+    bLobby.visible = t && !shop && !sets && FROM_LOBBY;
     bNext.visible = r;
     show([bAgain, bMenu], f);
     bLobby2.visible = f && FROM_LOBBY;
@@ -350,8 +426,8 @@ export function createClinic(app) {
       text(c, r.name, W - pad, H * 0.17, { size: H * 0.055, weight: 800, color: P.mintDark, align: 'right' });
       text(c, `★ ${progress.stars}`, W - pad, H * 0.25, { size: H * 0.055, weight: 800, color: '#d9a32c', align: 'right' });
       const lines = [
-        ['Mulai kerja', `Shift ${SHIFT_PATIENTS} pasien. Pasien menunggu di bangku, jangan biarkan bosan!`],
-        ['Mode Event', '3 menit, sebanyak mungkin pasien. Skor tampil di TV.'],
+        ['Mulai kerja', `Shift ${config.patientsPerShift} pasien. Pasien menunggu di bangku, jangan biarkan bosan!`],
+        ['Mode Event', `${config.eventMinutes} menit, sebanyak mungkin pasien. Skor tampil di TV.`],
         ['Tutorial', 'Suster Nana menunjukkan alat yang tepat untuk setiap langkah.'],
       ];
       lines.forEach(([a, b], i) => {
@@ -432,7 +508,7 @@ export function createClinic(app) {
     const pad = W * 0.07;
     const head1 = mode === 'event'
       ? `EVENT  ${fmt(eventLeft)}`
-      : mode === 'tutorial' ? 'TUTORIAL' : `PASIEN ${Math.min(served + 1, SHIFT_PATIENTS)} / ${SHIFT_PATIENTS}`;
+      : mode === 'tutorial' ? 'TUTORIAL' : `PASIEN ${Math.min(served + 1, config.patientsPerShift)} / ${config.patientsPerShift}`;
     text(c, head1, pad, H * 0.075, { size: H * 0.036, weight: 800, color: mode === 'event' && eventLeft < 15 ? P.red : P.muted });
     if (!caseId || !patient) {
       text(c, waiting.length ? 'Memanggil pasien...' : 'Menunggu pasien...', W / 2, H / 2, { size: H * 0.05, color: P.muted, align: 'center' });
@@ -626,18 +702,25 @@ export function createClinic(app) {
     }
     if (mode === 'tutorial') return { ...PATIENTS[0], personality: 'normal', caseId: 'scaling', complaint: CASES.scaling.complaints[0] };
     const roll = Math.random();
-    const personality = roll < 0.4 ? 'normal' : roll < 0.55 ? 'scared' : roll < 0.7 ? 'chatty' : roll < 0.85 ? 'vip' : 'kid';
+    let personality = roll < 0.4 ? 'normal' : roll < 0.55 ? 'scared' : roll < 0.7 ? 'chatty' : roll < 0.85 ? 'vip' : 'kid';
+    if (personality !== 'normal' && !config.types[personality]) personality = 'normal';
+    // kids need a treatment for kids
+    const kidCases = ['checkup', 'filling', 'scaling'].filter((k) => config.cases[k]);
+    if (personality === 'kid' && !kidCases.length) personality = 'normal';
     let pool = personality === 'kid' ? KIDS : PATIENTS;
     const fresh = pool.filter((p) => !used.has(p.name));
     if (fresh.length) pool = fresh; else used.clear();
     const base = pick(pool);
     used.add(base.name);
-    const cases = personality === 'kid'
-      ? ['checkup', 'checkup', 'filling', 'scaling']
-      : Object.keys(CASES).filter((k) => !CASES[k].kidsOnly);
+    const on = (k) => config.cases[k];
+    let cases = personality === 'kid'
+      ? [...kidCases, ...(on('checkup') ? ['checkup'] : [])]
+      : Object.keys(CASES).filter((k) => !CASES[k].kidsOnly && on(k));
+    if (!cases.length) cases = Object.keys(CASES).filter((k) => !CASES[k].kidsOnly);
     const cid = pick(cases);
     // some adults come with two problems at once (harder, more points)
-    const pair = personality !== 'kid' && Math.random() < 0.25 ? pick(PAIRS) : null;
+    const pairs = PAIRS.filter((pr) => pr.every(on));
+    const pair = personality !== 'kid' && pairs.length && Math.random() < config.pairChance ? pick(pairs) : null;
     const look = { ...base.look };
     if (personality === 'vip') { look.shades = true; look.top = '#f2d27a'; }
     return {
@@ -657,7 +740,7 @@ export function createClinic(app) {
     // a little gibberish voice: kids high, long hair a bit higher, others lower
     const female = ['long', 'bob', 'pony', 'bun'].includes(data.look.hairStyle);
     const pitch = (data.personality === 'kid' ? 420 : female ? 255 : 150) * (0.9 + Math.random() * 0.2);
-    ch.onSay = (t, tone) => sfx.voice(t, pitch, tone);
+    ch.onSay = (t, tone) => { if (config.voices) sfx.voice(t, pitch, tone); };
     group.add(ch.root);
     return ch;
   }
@@ -675,7 +758,7 @@ export function createClinic(app) {
     const data = makePatientData();
     if (mode === 'shift') spawned++;
     const ch = newCharacter(data);
-    const max = (40 + stepsOf(data) * 6) * PERSONALITIES[data.personality].patience;
+    const max = (40 + stepsOf(data) * 6) * PERSONALITIES[data.personality].patience * config.patienceMult;
     const w = { ...data, ch, seat, patience: 1, max, bar: makeBar(), state: 'walking', lookVec: new THREE.Vector3() };
     w.bar.visible = false;
     group.add(w.bar);
@@ -809,12 +892,12 @@ export function createClinic(app) {
   /** Bring the next patient to the chair: from the bench, or straight from the door. */
   function callNext() {
     if (state !== 'idle') return;
-    if (mode === 'shift' && served >= SHIFT_PATIENTS) return;
+    if (mode === 'shift' && served >= config.patientsPerShift) return;
     const w = waiting.find((x) => x.state === 'seated');
     if (w) { guard(runPatient(w)); return; }
     // nobody seated yet: if someone is still walking in they'll be called when they sit down
     if (waiting.length) return;
-    if (mode === 'shift' && spawned >= SHIFT_PATIENTS) return;
+    if (mode === 'shift' && spawned >= config.patientsPerShift) return;
     guard(runPatient(null));
   }
 
@@ -875,7 +958,7 @@ export function createClinic(app) {
     if (my !== token) return;
     if (!xr()) mouthTarget = makeMouthTarget(ch);
     const pers = personality();
-    patienceMax = (30 + stepsOf(data) * 9) * pers.patience;
+    patienceMax = (30 + stepsOf(data) * 9) * pers.patience * config.patienceMult;
     patience = 1;
     ch.lookAt(head);
     ch.face('happy');
@@ -945,7 +1028,7 @@ export function createClinic(app) {
     treatStart = clock;
     if (mouthTarget) mouthTarget.userData.enabled = true;
     // one funny moment for some patients (never in the tutorial)
-    if (mode !== 'tutorial' && Math.random() < 0.45) funny = { kind: pick(['sneeze', 'phone', 'sleep', 'hiccup']), at: 3 + Math.random() * 4 };
+    if (mode !== 'tutorial' && config.funny && Math.random() < 0.45) funny = { kind: pick(['sneeze', 'phone', 'sleep', 'hiccup']), at: 3 + Math.random() * 4 };
     if (mode === 'tutorial') tutorialStep();
     else if (served === 0 && mode === 'shift') assistant.say('Pilih alat di baki, Dok!', 2.2);
     layout();
@@ -1262,7 +1345,7 @@ export function createClinic(app) {
     guard(walkOut(pt.ch, sad));
     if (mode === 'tutorial') { progress.tutorialDone = true; finish(); return; }
     if (mode === 'shift') {
-      if (served >= SHIFT_PATIENTS) { finish(); return; }
+      if (served >= config.patientsPerShift) { finish(); return; }
       bigContent = { kind: 'result', r };
       state = 'result';
       big.redraw();
@@ -1292,7 +1375,7 @@ export function createClinic(app) {
 
   function checkShiftEnd() {
     if (mode !== 'shift' || state === 'final') return false;
-    if (served >= SHIFT_PATIENTS && (state === 'idle' || state === 'result')) { finish(); return true; }
+    if (served >= config.patientsPerShift && (state === 'idle' || state === 'result')) { finish(); return true; }
     return false;
   }
 
@@ -1328,7 +1411,7 @@ export function createClinic(app) {
       if (patient) { const pt = patient; patient = null; disposeJobs(); room.chair.want = 0; guard(walkOut(pt.ch, false)); }
     }
     for (const w of [...waiting]) { waiting.splice(waiting.indexOf(w), 1); group.remove(w.bar); w.state = 'leaving'; walkers.add(w.ch); guard((async () => { await w.ch.standUp(w.seat.front); doorOpen(); await w.ch.walkTo([{ x: 1.7, z: -2.5 }, DOOR_IN, DOOR_OUT], { speed: 1.1 }); doorClose(); removeCharacter(w.ch); })()); }
-    bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : SHIFT_PATIENTS };
+    bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : config.patientsPerShift };
     big.redraw();
     layout();
     starPop = 1;
@@ -1371,7 +1454,7 @@ export function createClinic(app) {
     served = 0;
     spawned = 0;
     combo = 0;
-    eventLeft = EVENT_SECONDS;
+    eventLeft = config.eventMinutes * 60;
     clinicTime = 8;
     nextArrival = mode === 'tutorial' ? Infinity : 7;
     used.clear();
@@ -1438,7 +1521,7 @@ export function createClinic(app) {
     // new arrivals for the bench
     if (playing && mode !== 'tutorial' && state !== 'result') {
       nextArrival -= dt;
-      const roomLeft = mode === 'event' || spawned < SHIFT_PATIENTS;
+      const roomLeft = mode === 'event' || spawned < config.patientsPerShift;
       if (nextArrival <= 0 && roomLeft && waiting.length < BENCH_SEATS) {
         nextArrival = mode === 'event' ? 7 + Math.random() * 5 : 10 + Math.random() * 6;
         guard(arriveToBench());
@@ -1488,7 +1571,7 @@ export function createClinic(app) {
         const want = curStep(firstOpen());
         const holdingRight = [...held.values()].some((t) => jobFor(t.id));
         if (want && want.tool !== 'xray' && !holdingRight) hes += dt; else hes = 0;
-        if (hes > 9 && !helped) { helped = true; nurseHands(want.tool); }
+        if (hes > 9 && !helped && config.nurseHelp) { helped = true; nurseHands(want.tool); }
       }
       // chatty patients keep talking
       if (state === 'treat' && patient.personality === 'chatty') {
@@ -1619,7 +1702,7 @@ export function createClinic(app) {
     skip(s) { for (const t of timers) t.t = Math.min(t.t, s ?? 0); },
     setEventLeft(v) { eventLeft = v; },
     force(list) { forced = list; },
-    openShop, shopPress, decor,
+    openShop, shopPress, decor, openSettings, closeSettings, config, makePatientData: () => makePatientData(),
     setClock(h) { clinicTime = h; },
     get held() { return [...held.values()].map((t) => t.id); },
     get arrivalIn() { return nextArrival; },

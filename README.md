@@ -41,6 +41,23 @@ If you hesitate too long on a step (about 9 seconds without the right tool), Sus
 - The clock on the wall runs with the shift (from 08:00). Long shifts turn golden in the afternoon and dark in the evening, outside the window too.
 - A fish tank with swimming fish under the TV.
 
+## Pengaturan (settings)
+
+Title screen → **Pengaturan**. Everything is saved on the headset.
+
+| Setting | Choices (default first) |
+| --- | --- |
+| Pasien per shift | 5, 7, 10, 3 |
+| Mode Event | 3, 5, 1, 2 minutes |
+| Kesabaran pasien | Normal, Cepat bosan, Santai |
+| Salah alat maksimal | 3, 5, 2 (scared patients get one less) |
+| Pasien 2 masalah | Kadang, Sering, Tidak ada |
+| Momen lucu, Bantuan Suster Nana, Suara pasien | on / off |
+| Perawatan yang muncul | tick the treatments you want (at least one) |
+| Tipe pasien | tick Penakut, Cerewet, VIP, Anak-anak (normal patients always come) |
+
+**Kembali ke awal** restores the defaults. To change the defaults for every headset (for an event, say), edit `DEFAULTS` in `src/game/config.js` and push.
+
 ## Dekorasi
 
 Spend stars on the clinic: wall colour, poster, plants, Suster Nana's uniform and the chair colour. Open it from the title screen (**Dekorasi**) or by pointing at the pink mirror on the left wall. Each button shows the next option and its price; pressing it buys (if needed) and uses it. Spending stars doesn't lower your rank.
@@ -138,6 +155,7 @@ src/game/music.js  cheerful background music, synthesized live (F major, 116 BPM
 src/game/boards.js X-ray screen, score TV, rank sign, FDC sign, unlockable decorations
 src/game/progress.js  stars, ranks, unlocks and the score board (saved on the headset)
 src/game/decor.js  Dekorasi: wall colours, posters, plants, uniform and chair colours
+src/game/config.js settings and their defaults (patients per shift, treatments, patient types...)
 ```
 
 ## Add a treatment

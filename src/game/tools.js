@@ -16,8 +16,15 @@ export const TOOL_INFO = {
   drill: { name: 'Bor Gigi', sharp: true, sound: 'drill' },
   filling: { name: 'Tambalan', sharp: false, sound: null },
   light: { name: 'Sinar Biru', sharp: false, sound: 'light' },
+  gel: { name: 'Kuas Gel', sharp: false, sound: null },
+  bracket: { name: 'Bracket', sharp: false, sound: null },
+  wire: { name: 'Kawat Behel', sharp: false, sound: null },
+  file: { name: 'Jarum Akar', sharp: true, sound: 'scaler' },
 };
-export const TOOL_ORDER = ['mirror', 'scaler', 'suction', 'syringe', 'forceps', 'gauze', 'drill', 'filling', 'light'];
+// tray order: 5 columns × 3 rows (the last two slots hold cotton rolls)
+export const TOOL_ORDER = ['mirror', 'scaler', 'suction', 'drill', 'filling', 'light', 'syringe', 'forceps', 'gauze', 'gel', 'bracket', 'wire', 'file'];
+const COLS = 5;
+const ROWS = 3;
 
 const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.45, ...o });
 const METAL = mat('#dfe7ec', { metalness: 0.85, roughness: 0.22 });
@@ -125,6 +132,50 @@ const BUILD = {
   },
 };
 
+Object.assign(BUILD, {
+  gel(g) {
+    g.add(handle('#a8d8f0'));
+    g.add(at(cyl(0.003, 0.003, 0.04, METAL), 0, 0, -0.14));
+    const brush = new THREE.Mesh(new THREE.SphereGeometry(0.007, 10, 8), mat('#ffffff', { roughness: 0.9 }));
+    brush.scale.set(1, 1, 1.5);
+    g.add(at(brush, 0, 0, -0.165));
+    const gel = new THREE.Mesh(new THREE.SphereGeometry(0.006, 10, 8), mat('#bfe8ff', { transparent: true, opacity: 0.85, roughness: 0.1, emissive: '#7fd0ff', emissiveIntensity: 0.25 }));
+    return g.add(at(gel, 0, 0.004, -0.17)), at(new THREE.Object3D(), 0, 0.002, -0.172);
+  },
+  bracket(g) {
+    // tweezers holding a tiny metal bracket
+    for (const s of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.004, 0.15), mat(P.pinkDeep));
+      arm.rotation.y = s * 0.05;
+      g.add(at(arm, s * 0.005, 0, -0.07));
+    }
+    const br = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.008, 0.004), METAL);
+    return g.add(at(br, 0, 0, -0.148)), at(new THREE.Object3D(), 0, 0, -0.15);
+  },
+  wire(g) {
+    // pliers holding an arch wire
+    const grip = mat(P.mintDeep);
+    for (const s of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.007, 0.11), grip);
+      arm.rotation.y = s * 0.12;
+      g.add(at(arm, s * 0.01, 0, -0.03));
+    }
+    g.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.008, 10, 8), METAL), 0, 0, -0.09));
+    g.add(at(cyl(0.004, 0.002, 0.03, METAL), 0, 0, -0.11));
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.0012, 6, 24, Math.PI), METAL);
+    arch.rotation.x = Math.PI / 2;
+    return g.add(at(arch, 0, 0, -0.125)), at(new THREE.Object3D(), 0, 0, -0.14);
+  },
+  file(g) {
+    // endodontic file: small handle, rubber stop, thin twisted needle
+    g.add(at(cyl(0.008, 0.008, 0.04, mat('#ffd36b')), 0, 0, -0.02));
+    g.add(at(cyl(0.004, 0.004, 0.08, mat('#ffd36b')), 0, 0, -0.06));
+    g.add(at(cyl(0.006, 0.006, 0.004, mat(P.pinkDeep)), 0, 0, -0.105));
+    const needle = cyl(0.0012, 0.0004, 0.06, METAL, 6);
+    return g.add(at(needle, 0, 0, -0.135)), at(new THREE.Object3D(), 0, 0, -0.165);
+  },
+});
+
 export function buildTool(id) {
   const group = new THREE.Group();
   const tip = BUILD[id](group);
@@ -147,8 +198,8 @@ export class ToolTray {
     this.surface.rotation.x = 0.32; // tilted toward the dentist
     this.group.add(this.surface);
 
-    const W = 0.6;
-    const D = 0.39;
+    const W = 0.86;
+    const D = 0.42;
     this.W = W;
     this.D = D;
     // cart
@@ -156,35 +207,40 @@ export class ToolTray {
     const white = mat(P.white, { roughness: 0.4 });
     const mint = mat(P.mint, { roughness: 0.5 });
     const legGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.86, 10);
-    for (const [x, z] of [[-0.26, -0.15], [0.26, -0.15], [-0.26, 0.15], [0.26, 0.15]]) {
+    for (const [x, z] of [[-0.38, -0.16], [0.38, -0.16], [-0.38, 0.16], [0.38, 0.16]]) {
       cart.add(at(new THREE.Mesh(legGeo, white), x, -0.47, z));
       cart.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), mint), x, -0.89, z));
     }
-    const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.02, 0.32), mint);
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.02, 0.34), mint);
     cart.add(at(shelf, 0, -0.62, 0));
     this.group.add(cart);
 
     // tray with name labels painted on it
     const canvas = document.createElement('canvas');
-    canvas.width = 1200;
-    canvas.height = 780;
+    const CW = 1600;
+    const CH = 780;
+    canvas.width = CW;
+    canvas.height = CH;
     const g = canvas.getContext('2d');
     g.fillStyle = '#ffffff';
-    g.fillRect(0, 0, 1200, 780);
+    g.fillRect(0, 0, CW, CH);
     g.strokeStyle = '#cdebe0';
     g.lineWidth = 6;
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 3; c++) {
+    const cw = (CW - 16) / COLS;
+    const ch = (CH - 16) / ROWS;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
         g.fillStyle = (r + c) % 2 ? '#f2fbf7' : '#fff4f7';
         g.beginPath();
-        g.roundRect(18 + c * 392, 18 + r * 254, 372, 236, 34);
+        g.roundRect(14 + c * cw, 14 + r * ch, cw - 12, ch - 12, 30);
         g.fill();
         g.stroke();
-        const id = TOOL_ORDER[r * 3 + c];
-        g.font = `800 46px ${FONT}`;
+        const id = TOOL_ORDER[r * COLS + c];
+        if (!id) continue;
+        g.font = `800 36px ${FONT}`;
         g.fillStyle = '#3f8f74';
         g.textAlign = 'center';
-        g.fillText(TOOL_INFO[id].name, 18 + c * 392 + 186, 18 + r * 254 + 214);
+        g.fillText(TOOL_INFO[id].name, 14 + c * cw + (cw - 12) / 2, 14 + r * ch + ch - 34);
       }
     }
     const tex = new THREE.CanvasTexture(canvas);
@@ -202,12 +258,31 @@ export class ToolTray {
     // tools in their slots
     this.tools = {};
     const hidden = new THREE.MeshBasicMaterial({ visible: false });
+    const slotPos = (n) => {
+      const r = Math.floor(n / COLS);
+      const c = n % COLS;
+      return new THREE.Vector3(-W / 2 + W / (COLS * 2) + c * (W / COLS), 0.018, -D / 2 + D / (ROWS * 2) + r * (D / ROWS) - 0.012);
+    };
+    // cotton rolls in the two spare slots
+    for (let n = TOOL_ORDER.length; n < COLS * ROWS; n++) {
+      const sp = slotPos(n);
+      for (let k = 0; k < 3; k++) {
+        const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.04, 10), mat('#ffffff', { roughness: 1 }));
+        roll.rotation.z = Math.PI / 2;
+        roll.position.set(sp.x, 0.012, sp.z - 0.02 + k * 0.02);
+        this.surface.add(roll);
+      }
+    }
+    // glowing ring the tutorial uses to show which tool to take
+    this.ring = new THREE.Mesh(new THREE.RingGeometry(0.05, 0.062, 32), new THREE.MeshBasicMaterial({ color: P.pinkDeep, transparent: true, opacity: 0.9, toneMapped: false }));
+    this.ring.rotation.x = -Math.PI / 2;
+    this.ring.visible = false;
+    this.surface.add(this.ring);
+    this.t = 0;
     TOOL_ORDER.forEach((id, n) => {
-      const r = Math.floor(n / 3);
-      const c = n % 3;
       const tool = buildTool(id);
       const slot = new THREE.Object3D();
-      slot.position.set(-W / 2 + W / 6 + c * (W / 3), 0.018, -D / 2 + D / 6 + r * (D / 3) - 0.012);
+      slot.position.copy(slotPos(n));
       slot.rotation.y = Math.PI / 2; // lying sideways, tip to the left
       this.surface.add(slot);
       tool.slot = slot;
@@ -218,7 +293,7 @@ export class ToolTray {
       tool.group.position.set(0, 0, 0.085);
       tool.group.scale.setScalar(0.92);
       // big invisible box that is easy to point at
-      const pick = new THREE.Mesh(new THREE.BoxGeometry(W / 3 - 0.01, 0.07, D / 3 - 0.008), hidden);
+      const pick = new THREE.Mesh(new THREE.BoxGeometry(W / COLS - 0.008, 0.07, D / ROWS - 0.008), hidden);
       pick.position.copy(slot.position).add(new THREE.Vector3(0, 0.02, 0));
       this.surface.add(pick);
       tool.pick = pick;
@@ -231,7 +306,30 @@ export class ToolTray {
   }
 
   /** Smoothly lift hovered tools and fly tools between the tray and a hand. */
+  /** Show a pulsing ring under one tool (or none). */
+  highlight(id) {
+    this.highlighted = id || null;
+    this.ring.visible = !!id;
+    if (id) this.ring.position.set(this.tools[id].slot.position.x, 0.013, this.tools[id].slot.position.z);
+  }
+
+  /** The unlockable gold drill. */
+  setGold(on) {
+    const d = this.tools.drill.group;
+    d.traverse((o) => {
+      if (!o.isMesh) return;
+      if (!o.userData.orig) o.userData.orig = o.material;
+      o.material = on ? GOLD : o.userData.orig;
+    });
+  }
+
   update(dt) {
+    this.t += dt;
+    if (this.ring.visible) {
+      const s = 1 + Math.sin(this.t * 6) * 0.12;
+      this.ring.scale.setScalar(s);
+      this.ring.material.opacity = 0.55 + Math.sin(this.t * 6) * 0.35;
+    }
     const k = 1 - Math.exp(-dt * 12);
     for (const tool of Object.values(this.tools)) {
       if (tool.home) {
@@ -270,3 +368,4 @@ export class ToolTray {
 }
 const _p = new THREE.Vector3();
 const _q = new THREE.Quaternion();
+const GOLD = mat('#f2c14e', { metalness: 0.9, roughness: 0.25, emissive: '#6b4b00', emissiveIntensity: 0.2 });

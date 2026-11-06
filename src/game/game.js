@@ -6,16 +6,35 @@ import { ToolTray, TOOL_INFO } from './tools.js';
 import { MouthWork } from './mouth.js';
 import { Effects } from './effects.js';
 import { Music } from './music.js';
-import { CASES, LINES, PATIENTS, ASSISTANT, pick } from './cases.js';
+import { buildBoards } from './boards.js';
+import { progress } from './progress.js';
+import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, FACTS, PERSONALITIES, TOOL_HINT, pick } from './cases.js';
 import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from '../core/ui.js';
-import { store } from '../core/util.js';
 
-const PATIENTS_PER_SHIFT = 3;
-const MAX_MISTAKES = 3; // wrong tools before the patient walks out
-const BEST_KEY = 'fdc.dentist.best';
+/**
+ * FDC Dentist.
+ *
+ * Patients come in through the door and wait on the bench, each with a patience bar. Call them to
+ * the chair one by one and pick the right instrument for each step of their treatment. Wrong
+ * instruments hurt (or annoy) them; too many and they walk out. Perfect patients in a row build a
+ * combo. Three modes:
+ *   - Tutorial: Suster Nana shows every step and which tool to take.
+ *   - Shift: 5 patients, a result card after each one.
+ *   - Event: 3 minutes, as many patients as you can, for a score board on the room TV.
+ */
+const SHIFT_PATIENTS = 5;
+const EVENT_SECONDS = 180;
+const BENCH_SEATS = 2;
 const MOUTH_REACH = 0.075; // how close (m) the tool tip must be to the mouth in VR
+const TARGET_REACH = 0.035; // ...and to the exact tooth, for tooth-by-tooth steps
 const STAND = { x: 0.35, z: -1.12 }; // where the patient stands before sitting in the chair
 const EXIT = { x: 0.85, z: -1.0 }; // where they step out of the chair (clear of the big panel)
+const BENCH = [ // seats on the waiting bench by the right wall (facing the room)
+  { x: 2.1, y: 0.49, z: -2.0, yaw: -Math.PI / 2, recline: 0, front: { x: 1.72, z: -2.0 } },
+  { x: 2.1, y: 0.49, z: -1.3, yaw: -Math.PI / 2, recline: 0, front: { x: 1.72, z: -1.3 } },
+];
+const DOOR_IN = { x: DOOR.x, z: DOOR.z + 0.7 };
+const DOOR_OUT = { x: DOOR.x, z: DOOR.z - 0.7 };
 const CANCEL = Symbol('cancel');
 
 // The "Lobby FDC" buttons only appear when the game was opened from the FDC VR lobby. In the
@@ -28,81 +47,135 @@ const LOBBY_URL = location.port === '5175'
   ? `${location.protocol}//${location.hostname}:5173/?from=dentist`
   : '/?from=dentist';
 
-/**
- * FDC Dentist. Patients walk in, sit in the chair and open wide. Pick the right instrument for
- * each step of their treatment. Wrong instruments hurt (or annoy) them; after three, they leave.
- */
 export function createClinic(app) {
   const group = new THREE.Group();
   const room = buildRoom();
   group.add(room.group);
-  const fx = new Effects(group);
+  const fx = new Effects(group, 160);
   const sfx = app.sfx;
   // on the dentist's right, clear of the line of sight to the patient's mouth
-  const tray = new ToolTray(app, { position: new THREE.Vector3(0.62, 0.86, -0.16), yaw: -0.85 });
+  const tray = new ToolTray(app, { position: new THREE.Vector3(0.78, 0.84, 0.04), yaw: -0.95 });
   group.add(tray.group);
+  tray.setGold(progress.has('golddrill'));
+  const boards = buildBoards(app, group);
 
-  const assistant = new Character({ height: 1.06, ...ASSISTANT.look });
-  assistant.root.position.set(-0.9, 0, -1.2);
-  assistant.root.rotation.y = Math.atan2(0.9, 1.2);
+  const assistant = new Character({ height: 1.06, badge: 'fdc', ...ASSISTANT.look });
+  assistant.root.position.set(-0.95, 0, -1.15);
+  assistant.root.rotation.y = Math.atan2(0.95, 1.15);
   group.add(assistant.root);
 
   const head = new THREE.Vector3(); // the player's head, updated every frame
   const tmp = new THREE.Vector3();
   const tmp2 = new THREE.Vector3();
+  const tmp3 = new THREE.Vector3();
 
   // ------------------------------------------------------------------ game state
-  let state = 'title'; // title | arriving | treat | react | done | leaving | result | final
+  // chair state: title | arriving | calm | treat | react | done | leaving | result | idle | final
+  let state = 'title';
+  let mode = null; // tutorial | shift | event
   let paused = false;
-  let patient = null;
+  let patient = null; // { ...data, ch } in the chair
   let work = null;
-  let patientNo = 0;
-  let queue = [];
   let caseId = null;
   let stepIdx = 0;
   let stepProgress = 0;
   let mistakes = 0;
   let treatStart = 0;
   let elapsed = 0;
+  let patience = 1; // 0..1 for the patient in the chair
+  let patienceMax = 60;
+  let calmLeft = 0;
+  let calmBonus = 0;
+  let sleeping = false;
+  let funny = null; // the funny moment planned for this patient
   let clock = 0;
-  let shift = { score: 0, stars: 0, happy: 0, results: [] };
-  let last = null; // result of the last patient
+  let combo = 0;
+  let eventLeft = 0;
+  let served = 0; // patients finished or lost (shift)
+  let spawned = 0; // patients that came in (shift)
+  let nextArrival = 0;
+  let shift = { score: 0, stars: 0, happy: 0, lost: 0, results: [] };
   let token = 0;
   let timers = [];
-  let leavingDone = Promise.resolve();
+  const waiting = []; // { ...data, ch, seat, patience, max, bar, state: walking|seated|leaving }
+  const walkers = new Set(); // characters on their way out
+  let doorUsers = 0;
 
   const wait = (s) => new Promise((resolve, reject) => {
     const my = token;
     timers.push({ t: s, done: () => (my === token ? resolve() : reject(CANCEL)) });
   });
   const guard = (p) => p.catch((e) => { if (e !== CANCEL) console.error(e); });
+  const comboMult = () => (combo >= 5 ? 3 : combo >= 3 ? 2 : combo >= 2 ? 1.5 : 1);
+  const personality = () => PERSONALITIES[patient?.personality || 'normal'];
+  const maxHearts = () => personality().hearts;
 
   // ------------------------------------------------------------------ panels
   const FRONT = new THREE.Vector3(0, 1.6, -1.25);
 
-  // title / how to play / results share one big card
   let bigContent = { kind: 'title' };
-  const big = makePanel(1.3, 0.74, (c, W, H) => drawBig(c, W, H, bigContent));
+  const big = makePanel(1.3, 0.78, (c, W, H) => drawBig(c, W, H, bigContent));
   big.mesh.position.copy(FRONT);
   group.add(big.mesh);
   const btn = (label, tone, x, y, onSelect, w = 0.4) => {
-    const b = makeButton(app, { label, tone, w, h: 0.13, onSelect });
+    const b = makeButton(app, { label, tone, w, h: 0.12, onSelect });
     b.position.set(FRONT.x + x, FRONT.y + y, FRONT.z + 0.02);
     group.add(b);
     return b;
   };
-  const bStart = btn('Mulai kerja', 'mint', -0.44, -0.47, () => startShift());
-  const bHow = btn('Cara main', 'light', 0, -0.47, () => { bigContent = bigContent.kind === 'how' ? { kind: 'title' } : { kind: 'how' }; big.redraw(); bHow.userData.setLabel(bigContent.kind === 'how' ? 'Kembali' : 'Cara main'); });
-  const bLobby = btn('Lobby FDC', 'pink', 0.44, -0.47, () => toLobby());
-  const bNext = btn('Pasien berikutnya', 'mint', -0.22, -0.47, () => nextPatient(), 0.52);
-  const bAgain = btn('Main lagi', 'mint', -0.22, -0.47, () => startShift(), 0.52);
-  const bLobby2 = btn('Lobby FDC', 'pink', 0.33, -0.47, () => toLobby(), 0.36);
+  const ROW1 = -0.46;
+  const ROW2 = -0.6;
+  const bStart = btn('Mulai kerja', 'mint', -0.43, ROW1, () => start('shift'));
+  const bEvent = btn('Mode Event', 'pink', 0, ROW1, () => start('event'));
+  const bTut = btn('Tutorial', 'light', 0.43, ROW1, () => start('tutorial'));
+  const bHow = btn('Cara main', 'light', -0.22, ROW2, () => { bigContent = bigContent.kind === 'how' ? { kind: 'title' } : { kind: 'how' }; big.redraw(); bHow.userData.setLabel(bigContent.kind === 'how' ? 'Kembali' : 'Cara main'); });
+  const bLobby = btn('Lobby FDC', 'pink', 0.22, ROW2, () => toLobby());
+  const bNext = btn('Pasien berikutnya', 'mint', -0.22, ROW1, () => nextPatient(), 0.52);
+  const bAgain = btn('Main lagi', 'mint', -0.43, ROW1, () => start(mode === 'tutorial' ? 'shift' : mode), 0.4);
+  const bMenu = btn('Menu', 'light', 0, ROW1, () => toTitle(), 0.4);
+  const bLobby2 = btn('Lobby FDC', 'pink', 0.43, ROW1, () => toLobby(), 0.4);
 
   // patient card on the right
-  const cardPanel = makePanel(0.62, 0.66, (c, W, H) => drawCard(c, W, H));
-  cardPanel.mesh.position.set(0.95, 1.5, -1.3);
+  const cardPanel = makePanel(0.62, 0.74, (c, W, H) => drawCard(c, W, H));
+  cardPanel.mesh.position.set(0.98, 1.52, -1.3);
   cardPanel.mesh.rotation.y = -0.55;
   group.add(cardPanel.mesh);
+
+  // small score pop-up above the chair (event mode)
+  let popText = null;
+  let popT = 0;
+  const pop = makePanel(0.5, 0.16, (c, W, H) => {
+    if (!popText) return;
+    card(c, W, H, { r: 0.4, fill: popText.bad ? '#fff0f0' : '#ffffff', stroke: popText.bad ? P.red : P.gold, lw: 8 });
+    text(c, popText.main, W / 2, H * 0.52, { size: H * 0.42, weight: 900, align: 'center', color: popText.bad ? P.red : P.mintDark });
+    if (popText.sub) text(c, popText.sub, W / 2, H * 0.86, { size: H * 0.2, weight: 700, align: 'center', color: P.pinkDeep });
+  });
+  pop.mesh.position.set(0.05, 1.62, -0.95);
+  pop.mesh.visible = false;
+  group.add(pop.mesh);
+  function showPop(main, sub, bad) {
+    popText = { main, sub, bad };
+    pop.redraw();
+    pop.mesh.visible = true;
+    popT = 2.2;
+  }
+
+  // rhythm indicator for the root canal file step
+  let rhythmOn = false;
+  let rhythmT = 0;
+  let rhythmGreen = false;
+  const rhythmPanel = makePanel(0.26, 0.09, (c, W, H) => {
+    card(c, W, H, { r: 0.45, fill: rhythmGreen ? P.mintDeep : P.red });
+    text(c, rhythmGreen ? 'GOSOK!' : 'TAHAN...', W / 2, H * 0.68, { size: H * 0.5, weight: 900, color: '#fff', align: 'center' });
+  });
+  rhythmPanel.mesh.visible = false;
+  group.add(rhythmPanel.mesh);
+
+  // a pink ring that shows where to touch with the tool
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.009, 0.013, 24), new THREE.MeshBasicMaterial({ color: P.pinkDeep, transparent: true, depthTest: false, toneMapped: false }));
+  ring.renderOrder = 30;
+  ring.visible = false;
+  group.add(ring);
 
   // pause menu
   const pausePanel = makePanel(0.8, 0.26, (c, W, H) => {
@@ -113,13 +186,13 @@ export function createClinic(app) {
   pausePanel.mesh.position.set(0, 1.62, -0.95);
   group.add(pausePanel.mesh);
   const pBtn = (label, tone, x, f) => {
-    const b = makeButton(app, { label, tone, w: 0.3, h: 0.12, onSelect: f });
+    const b = makeButton(app, { label, tone, w: 0.3, h: 0.11, onSelect: f });
     b.position.set(x, 1.4, -0.94);
     group.add(b);
     return b;
   };
   const pResume = pBtn('Lanjut', 'mint', -0.33, () => setPaused(false));
-  const pRestart = pBtn('Ulang', 'light', 0, () => { setPaused(false); startShift(); });
+  const pMenu = pBtn('Menu utama', 'light', 0, () => { setPaused(false); toTitle(); });
   const pLobby = pBtn('Lobby FDC', 'pink', 0.33, () => toLobby());
   const music = new Music(sfx);
   const musicLabel = () => (music.on ? 'Musik: nyala' : 'Musik: mati');
@@ -133,13 +206,13 @@ export function createClinic(app) {
     const r = state === 'result';
     const f = state === 'final';
     big.mesh.visible = t || r || f;
-    show([bStart, bHow], t);
+    show([bStart, bEvent, bTut, bHow], t);
     bLobby.visible = t && FROM_LOBBY;
     bNext.visible = r;
-    bAgain.visible = f;
-    bLobby2.visible = (f || r) && FROM_LOBBY;
+    show([bAgain, bMenu], f);
+    bLobby2.visible = f && FROM_LOBBY;
     cardPanel.mesh.visible = !t && !f;
-    show([pausePanel.mesh, pResume, pRestart, pMusic], paused);
+    show([pausePanel.mesh, pResume, pMenu, pMusic], paused);
     pLobby.visible = paused && FROM_LOBBY;
   }
 
@@ -161,99 +234,157 @@ export function createClinic(app) {
     card(c, W, H, { r: 0.08, stroke: P.mint, lw: 10 });
     const pad = W * 0.06;
     if (d.kind === 'title') {
-      drawToothLogo(c, pad + H * 0.17, H * 0.27, H * 0.17);
-      text(c, 'FDC Dentist', pad + H * 0.4, H * 0.24, { size: H * 0.13, weight: 800, color: P.mintDark });
-      text(c, 'Klinik Gigi Ceria', pad + H * 0.4, H * 0.35, { size: H * 0.07, weight: 600, color: P.pinkDeep });
+      drawToothLogo(c, pad + H * 0.15, H * 0.2, H * 0.14);
+      text(c, 'FDC Dentist', pad + H * 0.36, H * 0.19, { size: H * 0.11, weight: 800, color: P.mintDark });
+      text(c, 'Klinik Gigi Ceria', pad + H * 0.36, H * 0.28, { size: H * 0.06, weight: 600, color: P.pinkDeep });
+      const r = progress.rank();
+      text(c, r.name, W - pad, H * 0.17, { size: H * 0.055, weight: 800, color: P.mintDark, align: 'right' });
+      text(c, `★ ${progress.stars}`, W - pad, H * 0.25, { size: H * 0.055, weight: 800, color: '#d9a32c', align: 'right' });
       const lines = [
-        'Kamu dokter giginya! Pasien datang satu per satu.',
-        'Pilih alat yang tepat untuk setiap langkah perawatan.',
-        `Salah alat? Pasien kesakitan atau marah. Salah ${MAX_MISTAKES}x, pasien pulang.`,
-      ];
-      lines.forEach((l, i) => text(c, l, pad, H * 0.55 + i * H * 0.1, { size: H * 0.058, color: P.ink, maxWidth: W - pad * 2 }));
-      const best = store.get(BEST_KEY, 0);
-      if (best) text(c, `Skor terbaik: ${best}`, W - pad, H * 0.24, { size: H * 0.06, weight: 700, color: P.muted, align: 'right' });
-    } else if (d.kind === 'how') {
-      text(c, 'Cara main', pad, H * 0.15, { size: H * 0.09, weight: 800, color: P.mintDark });
-      const lines = [
-        ['Ambil alat', 'Arahkan laser ke baki, tekan trigger.'],
-        ['Pakai alat', 'Dekatkan ujung alat ke mulut pasien dan tahan.'],
-        ['Ganti alat', 'Ambil alat lain, atau tekan grip untuk mengembalikan.'],
-        ['Langkah', 'Kartu di kanan menunjukkan langkah perawatan.'],
-        ['Desktop', 'Klik alat, lalu klik-tahan mulut pasien.'],
+        ['Mulai kerja', `Shift ${SHIFT_PATIENTS} pasien. Pasien menunggu di bangku, jangan biarkan bosan!`],
+        ['Mode Event', '3 menit, sebanyak mungkin pasien. Skor tampil di TV.'],
+        ['Tutorial', 'Suster Nana menunjukkan alat yang tepat untuk setiap langkah.'],
       ];
       lines.forEach(([a, b], i) => {
-        const y = H * 0.3 + i * H * 0.115;
-        text(c, a, pad, y, { size: H * 0.058, weight: 800, color: P.pinkDeep });
-        text(c, b, pad + W * 0.22, y, { size: H * 0.055, color: P.ink, maxWidth: W * 0.68 });
+        const y = H * 0.43 + i * H * 0.1;
+        text(c, a, pad, y, { size: H * 0.048, weight: 800, color: P.pinkDeep });
+        text(c, b, pad + W * 0.2, y, { size: H * 0.045, color: P.ink, maxWidth: W * 0.72 });
+      });
+      const best = progress.best();
+      if (best) text(c, `Skor terbaik: ${best}`, pad, H * 0.72, { size: H * 0.045, weight: 700, color: P.muted });
+      const nu = progress.nextUnlock();
+      if (nu) text(c, `Hadiah berikutnya di ★ ${nu.stars}: ${nu.name}`, W - pad, H * 0.72, { size: H * 0.042, weight: 600, color: P.muted, align: 'right' });
+    } else if (d.kind === 'how') {
+      text(c, 'Cara main', pad, H * 0.13, { size: H * 0.08, weight: 800, color: P.mintDark });
+      const lines = [
+        ['Ambil alat', 'Arahkan laser ke baki, tekan trigger.'],
+        ['Pakai alat', 'Sentuhkan ujung alat ke gigi yang ditandai cincin pink, tahan.'],
+        ['Ganti alat', 'Ambil alat lain, atau tekan grip untuk mengembalikan.'],
+        ['Pasien takut', 'Arahkan laser ke pasien dan tekan trigger untuk menenangkan.'],
+        ['Rontgen', 'Tekan layar rontgen di kiri saat langkahnya muncul.'],
+        ['Combo', 'Pasien sempurna berturut-turut: skor ×1.5, ×2, ×3!'],
+      ];
+      lines.forEach(([a, b], i) => {
+        const y = H * 0.26 + i * H * 0.085;
+        text(c, a, pad, y, { size: H * 0.048, weight: 800, color: P.pinkDeep });
+        text(c, b, pad + W * 0.22, y, { size: H * 0.045, color: P.ink, maxWidth: W * 0.68 });
       });
     } else if (d.kind === 'result') {
       const r = d.r;
-      text(c, r.left ? `${r.name} pulang kecewa...` : `${r.name} tersenyum lagi!`, W / 2, H * 0.17, { size: H * 0.09, weight: 800, align: 'center', color: r.left ? P.red : P.mintDark });
-      drawStars(c, W / 2, H * 0.33, H * 0.075, r.stars);
+      text(c, r.left ? `${r.name} pulang kecewa...` : `${r.name} tersenyum lagi!`, W / 2, H * 0.13, { size: H * 0.08, weight: 800, align: 'center', color: r.left ? P.red : P.mintDark });
+      drawStars(c, W / 2, H * 0.25, H * 0.06, r.stars);
       const rows = r.left
-        ? [[`Langkah selesai`, `${r.stepsDone} / ${r.steps}`], ['Poin', `+${r.points}`]]
-        : [['Perawatan', `+${r.base}`], ['Tanpa salah', r.perfect ? `+${r.perfect}` : '-'], ['Bonus cepat', `+${r.speed}`], ['Salah alat', r.penalty ? `-${r.penalty}` : '0']];
+        ? [['Langkah selesai', `${r.stepsDone} / ${r.steps}`], ['Poin', `+${r.points}`]]
+        : [['Perawatan', `+${r.base}`], ['Tanpa salah', r.perfect ? `+${r.perfect}` : '-'], ['Bonus cepat', `+${r.speed}`], ...(r.extra ? [[r.extraLabel, `+${r.extra}`]] : []), ['Salah alat', r.penalty ? `-${r.penalty}` : '0'], ...(r.mult > 1 ? [['Pengali', `×${r.mult}`]] : [])];
       rows.forEach(([a, b], i) => {
-        const y = H * 0.5 + i * H * 0.075;
-        text(c, a, W * 0.28, y, { size: H * 0.055, color: P.muted });
-        text(c, b, W * 0.72, y, { size: H * 0.055, weight: 700, align: 'right' });
+        const y = H * 0.36 + i * H * 0.06;
+        text(c, a, W * 0.28, y, { size: H * 0.045, color: P.muted });
+        text(c, b, W * 0.72, y, { size: H * 0.045, weight: 700, align: 'right' });
       });
-      text(c, `Total pasien ini: ${r.points}   ·   Skor shift: ${shift.score}`, W / 2, H * 0.85, { size: H * 0.055, weight: 800, align: 'center', color: P.ink });
+      text(c, `Total: ${r.points}   ·   Skor shift: ${shift.score}`, W / 2, H * 0.78, { size: H * 0.05, weight: 800, align: 'center', color: P.ink });
+      // fun fact
+      c.font = `600 ${Math.round(H * 0.038)}px system-ui`;
+      const fact = wrap(c, `Tahukah kamu? ${r.fact}`, W - pad * 2).slice(0, 2);
+      fact.forEach((l, i) => text(c, l, W / 2, H * 0.86 + i * H * 0.045, { size: H * 0.038, weight: 600, color: P.pinkDeep, align: 'center' }));
     } else if (d.kind === 'final') {
-      const best = store.get(BEST_KEY, 0);
-      text(c, 'Shift selesai!', W / 2, H * 0.15, { size: H * 0.1, weight: 800, align: 'center', color: P.mintDark });
-      text(c, rankOf(shift.stars), W / 2, H * 0.26, { size: H * 0.07, weight: 700, align: 'center', color: P.pinkDeep });
-      drawStars(c, W / 2, H * 0.41, H * 0.06, shift.stars, PATIENTS_PER_SHIFT * 3);
-      text(c, `${shift.score}`, W / 2, H * 0.66, { size: H * 0.17, weight: 800, align: 'center' });
-      text(c, `Pasien senang: ${shift.happy} / ${PATIENTS_PER_SHIFT}   ·   Skor terbaik: ${best}${d.newBest ? '  (baru!)' : ''}`, W / 2, H * 0.78, { size: H * 0.055, color: P.muted, align: 'center' });
+      const title = mode === 'event' ? 'Waktu habis!' : mode === 'tutorial' ? 'Tutorial selesai!' : 'Shift selesai!';
+      text(c, title, W / 2, H * 0.12, { size: H * 0.09, weight: 800, align: 'center', color: P.mintDark });
+      if (mode === 'tutorial') {
+        text(c, 'Kamu siap jadi dokter gigi!', W / 2, H * 0.3, { size: H * 0.07, weight: 700, align: 'center', color: P.pinkDeep });
+        const tips = ['Tiap pasien punya langkah berbeda: baca kartu di kanan.', 'Pasien di bangku bisa bosan, jadi kerja cepat ya!', 'Pasien sempurna berturut-turut = combo!'];
+        tips.forEach((l, i) => text(c, l, W / 2, H * 0.45 + i * H * 0.08, { size: H * 0.048, align: 'center', color: P.ink }));
+        return;
+      }
+      text(c, rankOf(shift.stars, d.patients), W / 2, H * 0.21, { size: H * 0.06, weight: 700, align: 'center', color: P.pinkDeep });
+      text(c, `${shift.score}`, W / 2, H * 0.38, { size: H * 0.15, weight: 800, align: 'center' });
+      text(c, `Pasien senang: ${shift.happy}   ·   Pulang kecewa: ${shift.lost}   ·   ★ ${shift.stars}`, W / 2, H * 0.49, { size: H * 0.048, color: P.muted, align: 'center' });
+      text(c, `Skor terbaik: ${progress.best(mode)}${d.newBest ? '  (baru!)' : ''}   ·   Total bintang: ★ ${progress.stars}`, W / 2, H * 0.56, { size: H * 0.048, color: P.muted, align: 'center' });
+      if (d.unlocked?.length) {
+        roundRect(c, pad, H * 0.62, W - pad * 2, H * 0.12, H * 0.04);
+        c.fillStyle = P.pinkSoft; c.fill();
+        text(c, `Hadiah baru: ${d.unlocked.map((u) => u.name).join(', ')}!`, W / 2, H * 0.695, { size: H * 0.045, weight: 800, align: 'center', color: P.pinkDeep, maxWidth: W - pad * 2.6 });
+      } else if (d.rankUp) {
+        text(c, `Naik peringkat: ${d.rankUp}!`, W / 2, H * 0.69, { size: H * 0.055, weight: 800, align: 'center', color: P.pinkDeep });
+      }
     }
   }
 
   function drawCard(c, W, H) {
     card(c, W, H, { r: 0.08, fill: 'rgba(255,255,255,0.95)', stroke: P.pink, lw: 8 });
     const pad = W * 0.07;
-    if (!caseId) {
-      text(c, 'Menunggu pasien...', W / 2, H / 2, { size: H * 0.06, color: P.muted, align: 'center' });
+    const head1 = mode === 'event'
+      ? `EVENT  ${fmt(eventLeft)}`
+      : mode === 'tutorial' ? 'TUTORIAL' : `PASIEN ${Math.min(served + 1, SHIFT_PATIENTS)} / ${SHIFT_PATIENTS}`;
+    text(c, head1, pad, H * 0.075, { size: H * 0.036, weight: 800, color: mode === 'event' && eventLeft < 15 ? P.red : P.muted });
+    if (!caseId || !patient) {
+      text(c, waiting.length ? 'Memanggil pasien...' : 'Menunggu pasien...', W / 2, H / 2, { size: H * 0.05, color: P.muted, align: 'center' });
+      text(c, `Skor ${shift.score}`, W - pad, H * 0.94, { size: H * 0.038, weight: 800, color: P.mintDark, align: 'right' });
       return;
     }
     const cs = CASES[caseId];
-    const who = queue[patientNo];
-    text(c, `PASIEN ${patientNo + 1} / ${PATIENTS_PER_SHIFT}`, pad, H * 0.09, { size: H * 0.04, weight: 800, color: P.muted });
-    // hearts = patience left
-    for (let i = 0; i < MAX_MISTAKES; i++) drawHeart(c, W - pad - i * H * 0.07, H * 0.075, H * 0.026, i < MAX_MISTAKES - mistakes);
-    text(c, who.name, pad, H * 0.19, { size: H * 0.08, weight: 800 });
-    roundRect(c, pad, H * 0.225, c.measureText(cs.title).width * 0 + W * 0.6, H * 0.065, H * 0.03);
+    // hearts = wrong tools left
+    const hearts = maxHearts();
+    for (let i = 0; i < hearts; i++) drawHeart(c, W - pad - i * H * 0.06, H * 0.065, H * 0.022, i < hearts - mistakes);
+    text(c, patient.name, pad, H * 0.16, { size: H * 0.065, weight: 800 });
+    const tag = PERSONALITIES[patient.personality].label;
+    if (tag) {
+      c.font = `800 ${Math.round(H * 0.032)}px system-ui`;
+      const nw = c.measureText(patient.name).width;
+      c.font = `800 ${Math.round(H * 0.065)}px system-ui`;
+      const x = pad + c.measureText(patient.name).width + W * 0.03;
+      void nw;
+      roundRect(c, x, H * 0.12, W * 0.2, H * 0.05, H * 0.025);
+      c.fillStyle = patient.personality === 'vip' ? P.gold : P.pinkSoft; c.fill();
+      text(c, tag, x + W * 0.1, H * 0.157, { size: H * 0.03, weight: 800, color: P.ink, align: 'center' });
+    }
+    roundRect(c, pad, H * 0.19, W * 0.62, H * 0.055, H * 0.027);
     c.fillStyle = P.mintSoft; c.fill();
-    text(c, cs.title, pad + W * 0.03, H * 0.272, { size: H * 0.042, weight: 700, color: P.mintDark });
-    c.font = `italic 500 ${Math.round(H * 0.038)}px system-ui`;
-    const q = wrap(c, `"${who.complaint}"`, W - pad * 2).slice(0, 2);
-    q.forEach((l, i) => text(c, l, pad, H * 0.35 + i * H * 0.05, { size: H * 0.038, weight: 500, color: P.muted }));
-    let y = H * 0.48;
+    text(c, cs.title, pad + W * 0.03, H * 0.229, { size: H * 0.036, weight: 700, color: P.mintDark });
+    // patience bar
+    text(c, 'Sabar', W - pad - W * 0.25, H * 0.229, { size: H * 0.03, weight: 700, color: P.muted, align: 'right' });
+    roundRect(c, W - pad - W * 0.23, H * 0.207, W * 0.23, H * 0.03, H * 0.015);
+    c.fillStyle = '#e7ece9'; c.fill();
+    roundRect(c, W - pad - W * 0.23, H * 0.207, Math.max(0.001, W * 0.23 * patience), H * 0.03, H * 0.015);
+    c.fillStyle = patience > 0.5 ? P.mintDeep : patience > 0.25 ? P.gold : P.red; c.fill();
+
+    c.font = `italic 500 ${Math.round(H * 0.034)}px system-ui`;
+    const q = wrap(c, `"${patient.complaint}"`, W - pad * 2).slice(0, 2);
+    q.forEach((l, i) => text(c, l, pad, H * 0.3 + i * H * 0.045, { size: H * 0.034, weight: 500, color: P.muted }));
+    let y = H * 0.42;
+    if (patient.personality === 'scared') {
+      const now = state === 'calm';
+      drawStep(c, W, H, pad, y, 'Tenangkan pasien (laser + trigger ke pasien)', !now && calmLeft <= 0, now, '♥', now ? 1 - calmLeft / PERSONALITIES.scared.calm : 0);
+      y += H * 0.072;
+    }
     cs.steps.forEach((st, i) => {
       const done = i < stepIdx;
       const now = i === stepIdx && (state === 'treat' || state === 'react');
-      if (now) {
-        roundRect(c, pad * 0.6, y - H * 0.045, W - pad * 1.2, H * 0.075, H * 0.03);
-        c.fillStyle = P.pinkSoft; c.fill();
-        roundRect(c, pad * 0.6, y + H * 0.022, (W - pad * 1.2) * stepProgress, H * 0.008, H * 0.004);
-        c.fillStyle = P.pinkDeep; c.fill();
-      }
-      c.beginPath();
-      c.arc(pad + H * 0.02, y - H * 0.012, H * 0.022, 0, Math.PI * 2);
-      c.fillStyle = done ? P.mintDeep : now ? P.pinkDeep : '#e3e9e6';
-      c.fill();
-      if (done) text(c, '✓', pad + H * 0.02, y, { size: H * 0.035, weight: 800, color: '#fff', align: 'center' });
-      else text(c, `${i + 1}`, pad + H * 0.02, y, { size: H * 0.032, weight: 800, color: now ? '#fff' : P.muted, align: 'center' });
-      text(c, st.text, pad + H * 0.065, y, { size: H * 0.042, weight: now ? 800 : 500, color: done ? P.muted : P.ink, maxWidth: W - pad * 2 - H * 0.07 });
-      y += H * 0.085;
+      let label = st.text;
+      if (mode === 'tutorial' && now) label += ` → ${st.tool === 'xray' ? 'Layar Rontgen' : TOOL_INFO[st.tool].name}`;
+      drawStep(c, W, H, pad, y, label, done, now, `${i + 1}`, now ? stepProgress : 0);
+      y += H * 0.072;
     });
-    const secs = Math.floor(elapsed);
-    text(c, `Waktu ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`, pad, H * 0.94, { size: H * 0.042, weight: 700, color: P.muted });
-    text(c, `Skor ${shift.score}`, W - pad, H * 0.94, { size: H * 0.042, weight: 800, color: P.mintDark, align: 'right' });
+    text(c, `Waktu ${fmt(elapsed)}`, pad, H * 0.95, { size: H * 0.036, weight: 700, color: P.muted });
+    if (comboMult() > 1) text(c, `COMBO ×${comboMult()}`, W / 2, H * 0.95, { size: H * 0.036, weight: 900, color: P.pinkDeep, align: 'center' });
+    text(c, `Skor ${shift.score}`, W - pad, H * 0.95, { size: H * 0.036, weight: 800, color: P.mintDark, align: 'right' });
+  }
+  function drawStep(c, W, H, pad, y, label, done, now, mark, prog) {
+    if (now) {
+      roundRect(c, pad * 0.6, y - H * 0.04, W - pad * 1.2, H * 0.064, H * 0.026);
+      c.fillStyle = P.pinkSoft; c.fill();
+      roundRect(c, pad * 0.6, y + H * 0.018, (W - pad * 1.2) * prog, H * 0.007, H * 0.0035);
+      c.fillStyle = P.pinkDeep; c.fill();
+    }
+    c.beginPath();
+    c.arc(pad + H * 0.018, y - H * 0.01, H * 0.019, 0, Math.PI * 2);
+    c.fillStyle = done ? P.mintDeep : now ? P.pinkDeep : '#e3e9e6';
+    c.fill();
+    text(c, done ? '✓' : mark, pad + H * 0.018, y, { size: H * 0.03, weight: 800, color: done || now ? '#fff' : P.muted, align: 'center' });
+    text(c, label, pad + H * 0.055, y, { size: H * 0.034, weight: now ? 800 : 500, color: done ? P.muted : P.ink, maxWidth: W - pad * 2 - H * 0.06 });
   }
   let cardKey = '';
   function refreshCard(force) {
-    const key = `${caseId}|${stepIdx}|${Math.round(stepProgress * 20)}|${mistakes}|${Math.floor(elapsed)}|${state}|${shift.score}|${patientNo}`;
+    const key = `${caseId}|${stepIdx}|${Math.round(stepProgress * 20)}|${mistakes}|${Math.floor(elapsed)}|${state}|${shift.score}|${served}|${Math.round(patience * 40)}|${Math.ceil(eventLeft)}|${calmLeft}|${combo}|${waiting.length}`;
     if (!force && key === cardKey) return;
     cardKey = key;
     cardPanel.redraw();
@@ -278,7 +409,10 @@ export function createClinic(app) {
     held.set(pointer, tool);
     sfx.play('pick');
     haptic(pointer, 0.3, 40);
-    if (patient && state === 'treat') patient.lookAt(null);
+    if (mode === 'tutorial' && state === 'treat') {
+      const want = CASES[caseId].steps[stepIdx]?.tool;
+      if (tool.id === want) { tray.highlight(null); assistant.say('Bagus! Dekatkan ujungnya ke cincin pink di mulut pasien, lalu tahan.', 3.2); }
+    }
   };
   function returnTool(tool) {
     if (!tool || tool.home) return;
@@ -302,107 +436,332 @@ export function createClinic(app) {
   // desktop: click-and-hold on the mouth
   let deskWork = null;
   let mouthTarget = null;
-  function makeMouthTarget(pt) {
+  function makeMouthTarget(ch) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.085, 12, 8), new THREE.MeshBasicMaterial({ visible: false }));
     m.position.set(0, 0, 0.02);
-    pt.mouth.add(m);
+    ch.mouth.add(m);
     app.addTarget(m, { enabled: false, onHold: (hit, pointer) => { deskWork = { hit, pointer, frame: frameNo }; } });
     return m;
   }
-
-  // ------------------------------------------------------------------ the shift
-  function resetAll() {
-    token++;
-    for (const t of timers) t.done();
-    timers = [];
-    returnAll();
-    sfx.stopAll();
-    if (work) { work.dispose(); work = null; }
-    if (patient) { group.remove(patient.root); patient.dispose(); patient = null; }
-    if (mouthTarget) { app.removeTarget(mouthTarget); mouthTarget = null; }
-    room.door.want = 0;
-    room.chair.want = 0;
-    caseId = null;
+  // scared patients: point at them and press the trigger to calm them down
+  let calmTarget = null;
+  function makeCalmTarget(ch) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 8), new THREE.MeshBasicMaterial({ visible: false }));
+    m.position.set(0, -0.1, 0);
+    ch.head.add(m);
+    app.addTarget(m, { enabled: true, onSelect: (hit, pointer) => calmDown(pointer) });
+    return m;
   }
 
-  function startShift(forced) {
-    resetAll();
-    const cases = Array.isArray(forced) ? forced : shuffle(Object.keys(CASES));
-    const people = shuffle(PATIENTS).slice(0, PATIENTS_PER_SHIFT);
-    queue = people.map((p, i) => ({ ...p, caseId: cases[i % cases.length], complaint: pick(CASES[cases[i % cases.length]].complaints) }));
-    shift = { score: 0, stars: 0, happy: 0, results: [] };
-    patientNo = 0;
-    bHow.userData.setLabel('Cara main');
-    assistant.say('Ayo mulai, Dok! Pasien pertama datang.', 2.6);
-    assistant.face('smiley');
-    sfx.play('yay');
-    guard(runPatient());
+  // the X-ray screen
+  boards.onXray = () => {
+    if (paused) return;
+    const step = caseId && CASES[caseId].steps[stepIdx];
+    if (state === 'treat' && step?.tool === 'xray' && !boards.xray.scanning) {
+      boards.xray.startScan();
+      sfx.play('scan');
+    } else if (!boards.xray.scanning && caseId) {
+      boards.xray.startScan();
+      sfx.play('scan');
+    } else sfx.play('click');
+  };
+  boards.onScanDone = () => {
+    const step = caseId && CASES[caseId].steps[stepIdx];
+    if (state === 'treat' && step?.tool === 'xray') {
+      work?.progress('mirror', 1, 0);
+      finishStep(null);
+      assistant.say('Itu dia gigi yang sakit, Dok!', 2);
+      assistant.act('point', 1.4);
+    }
+  };
+
+  // ------------------------------------------------------------------ the door (shared by everyone)
+  function doorOpen() { doorUsers++; if (room.door.want !== 1) sfx.play('door'); room.door.want = 1; }
+  function doorClose() {
+    doorUsers = Math.max(0, doorUsers - 1);
+    if (doorUsers === 0) { room.door.want = 0; sfx.play('door-close'); }
+  }
+
+  // ------------------------------------------------------------------ patients
+  const used = new Set();
+  let forced = []; // test hook: [{ personality, caseId }] used by the next patients
+  function makePatientData() {
+    if (forced.length) {
+      const f = forced.shift();
+      const base = f.personality === 'kid' ? KIDS[0] : PATIENTS[Math.floor(Math.random() * PATIENTS.length)];
+      const look = { ...base.look, ...(f.personality === 'vip' ? { shades: true, top: '#f2d27a' } : {}) };
+      return { name: base.name, look, personality: f.personality, caseId: f.caseId, complaint: pick(CASES[f.caseId].complaints) };
+    }
+    if (mode === 'tutorial') return { ...PATIENTS[0], personality: 'normal', caseId: 'scaling', complaint: CASES.scaling.complaints[0] };
+    const roll = Math.random();
+    const personality = roll < 0.4 ? 'normal' : roll < 0.55 ? 'scared' : roll < 0.7 ? 'chatty' : roll < 0.85 ? 'vip' : 'kid';
+    let pool = personality === 'kid' ? KIDS : PATIENTS;
+    const fresh = pool.filter((p) => !used.has(p.name));
+    if (fresh.length) pool = fresh; else used.clear();
+    const base = pick(pool);
+    used.add(base.name);
+    const cases = personality === 'kid'
+      ? ['checkup', 'checkup', 'filling', 'scaling']
+      : Object.keys(CASES).filter((k) => !CASES[k].kidsOnly);
+    const cid = pick(cases);
+    const look = { ...base.look };
+    if (personality === 'vip') { look.shades = true; look.top = '#f2d27a'; }
+    return {
+      name: personality === 'vip' ? `${base.name} (VIP)` : base.name,
+      look,
+      personality,
+      caseId: cid,
+      complaint: pick(CASES[cid].complaints),
+    };
+  }
+
+  function newCharacter(data) {
+    const pers = PERSONALITIES[data.personality];
+    const ch = new Character({ height: pers.height || 1.0 + Math.random() * 0.1, ...data.look });
+    ch.onStep = () => sfx.play('footstep');
+    group.add(ch.root);
+    return ch;
+  }
+
+  function removeCharacter(ch) {
+    group.remove(ch.root);
+    ch.dispose();
+    walkers.delete(ch);
+  }
+
+  /** A new patient comes in through the door and sits on the bench. */
+  async function arriveToBench() {
+    const seat = BENCH.find((s) => !waiting.some((w) => w.seat === s));
+    if (!seat) return;
+    const data = makePatientData();
+    if (mode === 'shift') spawned++;
+    const ch = newCharacter(data);
+    const max = (40 + CASES[data.caseId].steps.length * 6) * PERSONALITIES[data.personality].patience;
+    const w = { ...data, ch, seat, patience: 1, max, bar: makeBar(), state: 'walking' };
+    w.bar.visible = false;
+    group.add(w.bar);
+    waiting.push(w);
+    ch.root.position.set(DOOR_OUT.x, 0, DOOR_OUT.z + 0.1);
+    const my = token;
+    doorOpen();
+    await ch.walkTo([DOOR_IN, { x: 1.7, z: -2.5 }, seat.front], { speed: 1.1 });
+    if (my !== token || w.state !== 'walking') return;
+    doorClose();
+    await ch.sitDown(seat);
+    if (my !== token || w.state !== 'walking') return;
+    w.state = 'seated';
+    w.bar.visible = true;
+    ch.face('neutral');
+    ch.lookAt(head);
+    if (data.personality === 'chatty') ch.say(pick(LINES.chat), 2.2);
+    else if (data.personality === 'kid') ch.say(pick(LINES.kidHello), 2.2);
+    else if (data.personality === 'vip') ch.say(pick(LINES.vipHello), 2.2, 'angry');
+    else ch.say(pick(LINES.hello), 1.6);
+    // the chair is free and nobody else is coming: call them right away
+    if (state === 'idle') callNext();
+  }
+
+  /** A waiting patient gives up and leaves. */
+  async function benchGiveUp(w) {
+    w.state = 'leaving';
+    waiting.splice(waiting.indexOf(w), 1);
+    group.remove(w.bar);
+    const ch = w.ch;
+    walkers.add(ch);
+    ch.face('mad');
+    ch.act('fist', 1.2);
+    ch.say(pick(LINES.waitBored), 2.2, 'angry');
+    sfx.play('grr');
+    combo = 0;
+    if (mode === 'shift') { served++; shift.lost++; shift.results.push({ left: true, stars: 0, points: 0 }); }
+    if (mode === 'event') showPop('Pasien pulang!', 'kelamaan menunggu', true);
+    refreshCard(true);
+    await ch.standUp(w.seat.front);
+    ch.face('sad');
+    doorOpen();
+    await ch.walkTo([{ x: 1.7, z: -2.5 }, DOOR_IN, DOOR_OUT], { speed: 0.8, sad: true });
+    doorClose();
+    removeCharacter(ch);
+    checkShiftEnd();
+  }
+
+  function makeBar() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 64;
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
+    s.scale.set(0.3, 0.075, 1);
+    s.userData = { c, tex, last: -1 };
+    return s;
+  }
+  function drawBar(bar, v) {
+    const k = Math.round(v * 30);
+    if (k === bar.userData.last) return;
+    bar.userData.last = k;
+    const { c, tex } = bar.userData;
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, 256, 64);
+    g.fillStyle = 'rgba(255,255,255,0.95)';
+    g.beginPath(); g.roundRect(4, 8, 248, 48, 24); g.fill();
+    g.fillStyle = '#e7ece9';
+    g.beginPath(); g.roundRect(56, 20, 184, 24, 12); g.fill();
+    g.fillStyle = v > 0.5 ? P.mintDeep : v > 0.25 ? P.gold : P.red;
+    g.beginPath(); g.roundRect(56, 20, Math.max(6, 184 * v), 24, 12); g.fill();
+    g.font = '40px system-ui';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(v > 0.5 ? '🙂' : v > 0.25 ? '😐' : '😠', 30, 34);
+    tex.needsUpdate = true;
+  }
+
+  /** Bring the next patient to the chair: from the bench, or straight from the door. */
+  function callNext() {
+    if (state !== 'idle') return;
+    if (mode === 'shift' && served >= SHIFT_PATIENTS) return;
+    const w = waiting.find((x) => x.state === 'seated');
+    if (w) { guard(runPatient(w)); return; }
+    // nobody seated yet: if someone is still walking in they'll be called when they sit down
+    if (waiting.length) return;
+    if (mode === 'shift' && spawned >= SHIFT_PATIENTS) return;
+    guard(runPatient(null));
   }
 
   function nextPatient() {
     if (state !== 'result') return;
-    patientNo++;
-    if (patientNo >= PATIENTS_PER_SHIFT) return;
-    // let the last patient finish walking out first
-    state = 'arriving';
+    state = 'idle';
     caseId = null;
     layout();
     refreshCard(true);
-    const my = token;
-    guard(leavingDone.then(() => { if (my === token) return runPatient(); return undefined; }));
+    if (!checkShiftEnd()) callNext();
   }
 
-  async function runPatient() {
-    resetAll();
-    const who = queue[patientNo];
-    caseId = who.caseId;
+  async function runPatient(fromBench) {
+    const my = token;
+    state = 'arriving';
     stepIdx = 0;
     stepProgress = 0;
     mistakes = 0;
     elapsed = 0;
-    state = 'arriving';
-    layout();
-    refreshCard(true);
-
-    patient = new Character({ height: 1.0 + Math.random() * 0.1, ...who.look });
-    patient.root.position.set(DOOR.x, 0, DOOR.z - 0.6);
-    patient.root.rotation.y = 0;
-    patient.onStep = () => sfx.play('footstep');
-    group.add(patient.root);
-    if (!xr()) mouthTarget = makeMouthTarget(patient);
-
-    await wait(0.4);
-    room.door.want = 1;
-    sfx.play('door');
-    await wait(0.5);
-    const walk = patient.walkTo([{ x: DOOR.x, z: DOOR.z + 0.7 }, { x: 1.0, z: -1.7 }, STAND]);
-    await wait(1.4);
-    room.door.want = 0;
-    sfx.play('door-close');
-    await walk;
-    patient.lookAt(head);
-    patient.face('happy');
-    patient.act('wave', 1.8);
-    patient.say(pick(LINES.hello), 1.6);
+    calmLeft = 0;
+    calmBonus = 0;
+    sleeping = false;
+    funny = null;
+    let ch;
+    let data;
+    if (fromBench) {
+      fromBench.state = 'called';
+      waiting.splice(waiting.indexOf(fromBench), 1);
+      group.remove(fromBench.bar);
+      data = fromBench;
+      ch = fromBench.ch;
+      patient = { ...data, ch };
+      caseId = data.caseId;
+      layout();
+      refreshCard(true);
+      ch.say('Giliranku!', 1.2);
+      await ch.standUp(fromBench.seat.front);
+      if (my !== token) return;
+      await ch.walkTo([{ x: 1.15, z: -1.25 }, STAND], { speed: 1.1 });
+    } else {
+      data = makePatientData();
+      if (mode === 'shift') spawned++;
+      ch = newCharacter(data);
+      patient = { ...data, ch };
+      caseId = data.caseId;
+      layout();
+      refreshCard(true);
+      ch.root.position.set(DOOR_OUT.x, 0, DOOR_OUT.z + 0.1);
+      await wait(0.3);
+      doorOpen();
+      const walk = ch.walkTo([DOOR_IN, { x: 1.0, z: -1.7 }, STAND]);
+      await wait(1.4);
+      doorClose();
+      await walk;
+    }
+    if (my !== token) return;
+    if (!xr()) mouthTarget = makeMouthTarget(ch);
+    const pers = personality();
+    patienceMax = (30 + CASES[caseId].steps.length * 9) * pers.patience;
+    patience = 1;
+    ch.lookAt(head);
+    ch.face('happy');
+    ch.act('wave', 1.8);
+    const hello = data.personality === 'kid' ? LINES.kidHello : data.personality === 'vip' ? LINES.vipHello : data.personality === 'scared' ? LINES.scared : LINES.hello;
+    ch.say(pick(hello), 1.8);
     sfx.play('hello');
-    await wait(1.5);
-    patient.face('talk');
-    patient.say(who.complaint, 3.2);
-    assistant.lookAt(patient.headWorld(new THREE.Vector3()));
-    await wait(3.0);
-    patient.face('neutral');
-    await patient.sitDown(SEAT);
+    if (data.personality === 'scared') ch.face('scared');
+    await wait(1.6);
+    ch.face('talk');
+    ch.say(data.complaint, 3.0);
+    assistant.lookAt(ch.headWorld(new THREE.Vector3()));
+    await wait(2.8);
+    ch.face(data.personality === 'scared' ? 'scared' : 'neutral');
+    await ch.sitDown(SEAT);
+    if (my !== token) return;
     room.chair.want = 1;
-    patient.face('aaa');
-    patient.say(pick(LINES.sit), 1.4);
-    await wait(0.6);
-    work = new MouthWork(patient, caseId, fx, sfx);
+    work = new MouthWork(ch, caseId, fx, sfx);
+    work.onCount = (n) => { if (n % 2 === 0 || n === 12) assistant.say(`${n}!`, 0.6); };
+    if (CASES[caseId].steps.some((s) => s.tool === 'xray')) boards.xray.show(caseId); else boards.xray.clear();
+    assistant.lookAt(null);
+    if (data.personality === 'scared') {
+      state = 'calm';
+      calmLeft = pers.calm;
+      calmTarget = makeCalmTarget(ch);
+      ch.act('shiver', 30);
+      ch.say(pick(LINES.scared), 2.4, 'sad');
+      assistant.say('Pasiennya takut, Dok! Arahkan laser ke dia dan tekan trigger.', 3.4);
+      layout();
+      refreshCard(true);
+      return;
+    }
+    beginTreatment();
+  }
+
+  function calmDown(pointer) {
+    if (state !== 'calm' || paused) return;
+    calmLeft--;
+    sfx.play('calm');
+    haptic(pointer, 0.3, 60);
+    const ch = patient.ch;
+    fx.emit('heart', ch.headWorld(tmp).add(new THREE.Vector3(0, 0.22, 0)), 3, { speed: 0.2, size: 0.05, up: 0.3, life: 1.1 });
+    assistant.act('calm', 1.0);
+    refreshCard(true);
+    if (calmLeft > 0) { ch.say(calmLeft === 1 ? 'Hmm... sedikit lagi...' : 'Hiks... beneran tidak sakit?', 1.4, 'sad'); return; }
+    calmBonus = 50;
+    ch.action = null;
+    ch.face('smiley');
+    ch.say(pick(LINES.calmed), 1.6, 'happy');
+    if (calmTarget) { app.removeTarget(calmTarget); calmTarget.removeFromParent(); calmTarget = null; }
+    state = 'react';
+    guard(wait(1.2).then(() => { if (state === 'react') beginTreatment(); }));
+  }
+
+  function beginTreatment() {
+    const ch = patient.ch;
+    ch.face('aaa');
+    ch.say(pick(LINES.sit), 1.2);
     state = 'treat';
     treatStart = clock;
     if (mouthTarget) mouthTarget.userData.enabled = true;
-    assistant.lookAt(null);
-    if (patientNo === 0) assistant.say('Pilih alat di baki, Dok!', 2.4);
+    // one funny moment for some patients (never in the tutorial)
+    if (mode !== 'tutorial' && Math.random() < 0.45) funny = { kind: pick(['sneeze', 'phone', 'sleep', 'hiccup']), at: 3 + Math.random() * 4 };
+    if (mode === 'tutorial') tutorialStep();
+    else if (served === 0 && mode === 'shift') assistant.say('Pilih alat di baki, Dok!', 2.2);
     layout();
+    refreshCard(true);
+  }
+
+  function tutorialStep() {
+    const step = CASES[caseId].steps[stepIdx];
+    if (!step) return;
+    if (step.tool === 'xray') { assistant.say('Tekan layar rontgen di sebelah kiri!', 3); return; }
+    tray.highlight(step.tool);
+    const name = TOOL_INFO[step.tool].name;
+    const lines = [
+      `Langkah ${stepIdx + 1}: ${step.text.toLowerCase()}. Ambil ${name}, yang bercincin di baki!`,
+    ];
+    assistant.say(lines[0], 3.6);
+    assistant.act('point', 1.6);
   }
 
   // ------------------------------------------------------------------ treating
@@ -413,187 +772,396 @@ export function createClinic(app) {
       if (entering) mistake(tool, pointer);
       return;
     }
+    if (entering) haptic(pointer, 0.5, 40);
+    if (step.rhythm && !rhythmGreen) {
+      // filing while the light is red hurts a little and loses some progress
+      if (!rhythmOuchCool) {
+        rhythmOuchCool = 0.8;
+        stepProgress = Math.max(0, stepProgress - 0.1);
+        patient.ch.jump = 0.6;
+        patient.ch.say(pick(LINES.rhythmOuch), 1.0, 'angry');
+        sfx.play('aw');
+        haptic(pointer, 0.8, 80);
+      }
+      sfx.loop(tool.sound || 'none', false);
+      return;
+    }
     stepProgress = Math.min(1, stepProgress + dt / step.time);
     work.progress(step.tool, stepProgress, dt);
     if (tool.sound) sfx.loop(tool.sound, true);
     tool.working = true;
     haptic(pointer, TOOL_INFO[tool.id].sharp ? 0.25 : 0.12, 30);
-    // the patient reacts to the work: eyes squeeze a little for sharp tools
-    if (TOOL_INFO[tool.id].sharp && Math.random() < dt * 0.8) patient.blink = 0;
+    if (TOOL_INFO[tool.id].sharp && Math.random() < dt * 0.8) patient.ch.blink = 0;
+    if (patient.personality === 'scared' && Math.random() < dt * 1.5) patient.ch.shake = Math.max(patient.ch.shake, 0.3);
     if (stepProgress >= 1) finishStep(tool);
   }
+  let rhythmOuchCool = 0;
 
   function finishStep(tool) {
     const steps = CASES[caseId].steps;
     const step = steps[stepIdx];
-    work.done(step.tool, tool);
+    if (tool) {
+      work.done(step.tool, tool);
+      sfx.loop(tool.sound || 'none', false);
+      haptic(tool.pointer, 0.6, 80);
+    }
     if (step.tool !== 'mirror') work.stopHighlight();
-    sfx.loop(tool.sound || 'none', false);
     sfx.play('step-done');
-    fx.emit('star', patient.mouthWorld(tmp), 6, { speed: 0.35, size: 0.035, life: 0.7, up: 0.15 });
-    haptic(tool.pointer, 0.6, 80);
+    fx.emit('star', patient.ch.mouthWorld(tmp), 6, { speed: 0.35, size: 0.035, life: 0.7, up: 0.15 });
     stepIdx++;
     stepProgress = 0;
-    if (step.tool === 'syringe') { patient.face('numb'); patient.say(pick(LINES.numb), 1.6); guard(wait(1.8).then(() => { if (state === 'treat') patient.face('aaa'); })); }
+    if (step.tool === 'syringe') { patient.ch.face('numb'); patient.ch.say(pick(LINES.numb), 1.6); guard(wait(1.8).then(() => { if (state === 'treat' && !sleeping) patient.ch.face('aaa'); })); }
     if (stepIdx >= steps.length) { guard(treatmentDone()); return; }
+    if (mode === 'tutorial') { tutorialStep(); return; }
     if (Math.random() < 0.5) assistant.say(pick(LINES.stepOk), 1.3);
   }
 
   function mistake(tool, pointer) {
-    mistakes++;
+    const ch = patient.ch;
+    const kid = patient.personality === 'kid';
+    const pain = kid || TOOL_INFO[tool.id].sharp;
+    const tut = mode === 'tutorial';
+    if (!tut) mistakes++;
+    combo = 0;
     state = 'react';
-    const pain = TOOL_INFO[tool.id].sharp;
-    patient.face(pain ? 'pain' : 'mad');
-    patient.jump = 1;
-    patient.shake = 1;
-    patient.act(pain ? 'cover' : 'fist', 1.4);
-    patient.say(pick(pain ? LINES.pain : LINES.mad), 1.8, 'angry');
+    if (sleeping) { sleeping = false; ch.say('Hah?! Aku ketiduran?!', 1.0); }
+    ch.face(pain ? 'pain' : 'mad');
+    ch.jump = 1;
+    ch.shake = 1;
+    ch.act(pain ? 'cover' : 'fist', 1.4);
+    ch.say(tut ? 'Eh? Bukan itu, Dok...' : pick(kid ? LINES.kidPain : pain ? LINES.pain : LINES.mad), 1.8, 'angry');
     sfx.play(pain ? 'ouch' : 'grr');
-    sfx.play('heart');
+    if (!tut) sfx.play('heart');
     haptic(pointer, 1, 200);
-    const h = patient.headWorld(tmp);
+    const h = ch.headWorld(tmp);
     if (pain) {
-      for (const s of [-1, 1]) fx.emit('tear', tmp2.copy(h).add(new THREE.Vector3(0, 0.03, 0)).addScaledVector(sideOf(patient), s * 0.1), 3, { speed: 0.4, size: 0.035, gravity: 1.6, up: 0.4, life: 0.9 });
+      for (const s of [-1, 1]) fx.emit('tear', tmp2.copy(h).add(new THREE.Vector3(0, 0.03, 0)).addScaledVector(sideOf(ch), s * 0.08), kid ? 6 : 3, { speed: 0.4, size: 0.035, gravity: 1.6, up: 0.4, life: 0.9 });
     } else {
-      fx.emit('anger', tmp2.copy(h).add(new THREE.Vector3(0.12, 0.2, 0)), 1, { speed: 0, size: 0.09, life: 1.2 });
-      fx.emit('puff', tmp2.copy(h).add(new THREE.Vector3(0, 0.28, 0)), 6, { speed: 0.15, size: 0.07, up: 0.35, life: 1.0, grow: 1.5 });
+      fx.emit('anger', tmp2.copy(h).add(new THREE.Vector3(0.1, 0.17, 0)), 1, { speed: 0, size: 0.08, life: 1.2 });
+      fx.emit('puff', tmp2.copy(h).add(new THREE.Vector3(0, 0.24, 0)), 6, { speed: 0.15, size: 0.07, up: 0.35, life: 1.0, grow: 1.5 });
     }
     assistant.act('facepalm', 1.1);
-    const right = TOOL_INFO[CASES[caseId].steps[stepIdx].tool].name;
+    const want = CASES[caseId].steps[stepIdx].tool;
+    const right = want === 'xray' ? null : TOOL_INFO[want].name;
     refreshCard(true);
     guard((async () => {
       await wait(0.45);
       returnTool(tool);
       await wait(0.6);
-      if (mistakes >= MAX_MISTAKES) { await leaveSad(); return; }
-      assistant.say(`Dok, coba pakai ${right}!`, 2.4);
+      if (mistakes >= maxHearts()) { await leaveSad(); return; }
+      assistant.say(right ? `Dok, coba pakai ${right}!` : `Dok, ${TOOL_HINT.xray}!`, 2.4);
       assistant.act('point', 1.6);
+      if (tut) tutorialStep();
       await wait(0.5);
-      patient.face('aaa');
-      if (mistakes === MAX_MISTAKES - 1) patient.say(pick(LINES.lastChance), 2.0, 'angry');
+      ch.face('aaa');
+      if (!tut && mistakes === maxHearts() - 1) ch.say(pick(LINES.lastChance), 2.0, 'angry');
       state = 'treat';
     })());
   }
 
+  // ------------------------------------------------------------------ funny moments
+  async function runFunny(kind) {
+    const ch = patient.ch;
+    const my = token;
+    if (kind === 'sneeze') {
+      state = 'react';
+      ch.face('sneeze');
+      ch.say('Ha... ha...', 1.0);
+      sfx.play('sneeze-in');
+      await wait(1.1);
+      if (my !== token) return;
+      ch.say('HACHOOO!', 1.2, 'angry');
+      sfx.play('sneeze');
+      ch.jump = 1;
+      fx.emit('puff', ch.mouthWorld(tmp), 10, { speed: 0.6, size: 0.06, life: 0.8, grow: 1.2, dir: tmp2.copy(head).sub(tmp).normalize() });
+      if (held.size) { returnAll(); assistant.say('Waduh, alatnya terpental!', 1.8); }
+      assistant.act('shrug', 1.2);
+      await wait(1.2);
+      ch.face('aaa');
+      ch.say('Maaf, Dok... hehe', 1.2);
+      if (state === 'react') state = 'treat';
+    } else if (kind === 'phone') {
+      state = 'react';
+      sfx.play('ring');
+      ch.face('talk');
+      ch.act('phone', 3.0);
+      ch.say(pick(LINES.phone), 2.8);
+      assistant.say('Sebentar, Dok... pasiennya angkat telepon.', 2.4);
+      assistant.act('shrug', 1.4);
+      await wait(3.0);
+      ch.face('aaa');
+      ch.say('Oke, lanjut Dok!', 1.0);
+      if (state === 'react') state = 'treat';
+    } else if (kind === 'sleep') {
+      sleeping = true;
+      ch.face('sleep');
+      ch.say('Zzz...', 1.6);
+      assistant.say('Hihi, pasiennya tidur, Dok. Pelan-pelan ya.', 2.2);
+    } else if (kind === 'hiccup') {
+      for (let i = 0; i < 4 && my === token && state !== 'done'; i++) {
+        ch.jump = 0.7;
+        sfx.play('hik');
+        ch.say(i === 3 ? 'Hik! Maaf... hik!' : 'Hik!', 0.6);
+        await wait(0.9);
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ scoring and leaving
   function scorePatient(left) {
     const steps = CASES[caseId].steps.length;
     const par = 12 + steps * 6;
+    const pers = personality();
+    const fact = pick(FACTS[caseId]);
     if (left) {
       const points = stepIdx * 50;
-      return { name: queue[patientNo].name, left: true, stars: 0, points, stepsDone: stepIdx, steps };
+      return { name: patient.name, left: true, stars: 0, points, stepsDone: stepIdx, steps, fact, mult: 1 };
     }
     const base = steps * 100;
     const perfect = mistakes === 0 ? 100 : 0;
     const speed = Math.max(0, Math.round((par - elapsed) * 4));
     const penalty = mistakes * 40;
-    const points = Math.max(0, base + perfect + speed - penalty);
+    const extra = calmBonus + (sleeping ? 30 : 0);
+    const extraLabel = calmBonus ? 'Bonus menenangkan' : sleeping ? 'Pasien tertidur pulas' : '';
+    if (mistakes === 0 && mode !== 'tutorial') combo++; else combo = 0;
+    const mult = comboMult() * pers.points;
+    const points = Math.max(0, Math.round((base + perfect + speed + extra - penalty) * mult));
     const stars = mistakes === 0 && elapsed <= par ? 3 : mistakes <= 1 ? 2 : 1;
-    return { name: queue[patientNo].name, left: false, stars, points, base, perfect, speed, penalty };
+    return { name: patient.name, left: false, stars, points, base, perfect, speed, penalty, extra, extraLabel, mult: Math.round(mult * 10) / 10, fact };
   }
 
   async function treatmentDone() {
     state = 'done';
     returnAll();
+    tray.highlight(null);
     if (mouthTarget) mouthTarget.userData.enabled = false;
+    const ch = patient.ch;
     const r = scorePatient(false);
     finishPatient(r);
-    patient.face('happy');
-    patient.act('cheer', 2.2);
-    patient.jump = 1;
-    patient.say(pick(LINES.thanks), 2.4, 'happy');
+    ch.action = null;
+    ch.face('happy');
+    ch.act('cheer', 2.2);
+    ch.jump = 1;
+    const kid = patient.personality === 'kid';
+    ch.say(pick(kid ? LINES.kidThanks : LINES.thanks), 2.4, 'happy');
     sfx.play('win');
-    const h = patient.headWorld(tmp).clone();
-    fx.emit('heart', h.clone().add(new THREE.Vector3(0, 0.25, 0)), 6, { speed: 0.3, size: 0.06, up: 0.35, life: 1.4 });
+    if (kid) { ch.addSticker(); sfx.play('sticker'); }
+    const h = ch.headWorld(tmp).clone();
+    fx.emit('heart', h.clone().add(new THREE.Vector3(0, 0.22, 0)), 6, { speed: 0.3, size: 0.06, up: 0.35, life: 1.4 });
     fx.emit('star', h, 12, { speed: 0.6, size: 0.04, life: 1.0, up: 0.2 });
+    if (r.mult > 1 && comboMult() > 1) celebrateCombo(h);
     assistant.act('clap', 2.0);
     assistant.face('happy');
-    assistant.say('Hebat, Dok!', 1.6);
+    assistant.say(comboMult() > 1 ? `COMBO ×${comboMult()}! Luar biasa, Dok!` : 'Hebat, Dok!', 1.8);
+    if (mode === 'event') showPop(`+${r.points}`, r.mult > 1 ? `×${r.mult}` : `${'★'.repeat(r.stars)}`);
     await wait(2.0);
     room.chair.want = 0;
-    showResult(r);
-    leavingDone = walkOut(false);
+    afterPatient(r, false);
   }
 
-  async function leaveSad() {
+  function celebrateCombo(at) {
+    sfx.play('combo');
+    sfx.play('clap');
+    const big = progress.has('confetti');
+    fx.emit('confetti', at.clone().add(new THREE.Vector3(0, 0.6, 0)), big ? 60 : 30, { speed: 1.2, size: 0.035, life: 2.2, gravity: 0.9, up: 0.6, spread: 0.3 });
+    if (big) fx.emit('confetti', new THREE.Vector3(0, 2.4, -0.6), 50, { speed: 0.6, size: 0.04, life: 2.6, gravity: 0.7, spread: 1.4 });
+  }
+
+  async function leaveSad(reason) {
     state = 'leaving';
     returnAll();
+    tray.highlight(null);
     if (mouthTarget) mouthTarget.userData.enabled = false;
+    const ch = patient.ch;
     const r = scorePatient(true);
+    combo = 0;
     finishPatient(r);
-    patient.face('sad');
-    patient.say(pick(LINES.leave), 2.4, 'sad');
+    ch.action = null;
+    ch.face('sad');
+    ch.say(reason === 'bored' ? pick(LINES.waitBored) : pick(LINES.leave), 2.4, 'sad');
     sfx.play('sad');
     assistant.act('shrug', 1.6);
     assistant.face('sad');
+    if (mode === 'event') showPop('Pasien kecewa', reason === 'bored' ? 'kelamaan' : 'salah alat', true);
     await wait(1.8);
     room.chair.want = 0;
-    showResult(r);
-    leavingDone = walkOut(true);
-  }
-
-  async function walkOut(sad) {
-    const my = token;
-    const pt = patient;
-    if (work) { work.dispose(); work = null; }
-    await pt.standUp(EXIT);
-    if (my !== token) return;
-    pt.lookAt(null);
-    room.door.want = 1;
-    sfx.play('door');
-    if (!sad) pt.face('happy');
-    await pt.walkTo([{ x: 1.0, z: -1.7 }, { x: DOOR.x, z: DOOR.z + 0.7 }, { x: DOOR.x, z: DOOR.z - 0.7 }], { speed: sad ? 0.8 : 1.2, sad });
-    if (my !== token) return;
-    room.door.want = 0;
-    sfx.play('door-close');
-    group.remove(pt.root);
-    pt.dispose();
-    if (patient === pt) patient = null;
+    afterPatient(r, true);
   }
 
   function finishPatient(r) {
     shift.score += r.points;
     shift.stars += r.stars;
-    if (!r.left) shift.happy++;
+    if (r.left) shift.lost++; else shift.happy++;
     shift.results.push(r);
-    last = r;
+    if (mode === 'shift') served++;
+    rhythmOn = false;
+    rhythmPanel.mesh.visible = false;
     refreshCard(true);
   }
 
-  function showResult(r) {
-    const final = patientNo >= PATIENTS_PER_SHIFT - 1;
-    sfx.play('star');
-    if (final) {
-      const best = store.get(BEST_KEY, 0);
-      const newBest = shift.score > best;
-      if (newBest) store.set(BEST_KEY, shift.score);
-      bigContent = { kind: 'final', newBest };
-      state = 'final';
-      assistant.say(shift.happy === PATIENTS_PER_SHIFT ? 'Semua pasien senang! Keren!' : 'Shift selesai, Dok!', 2.6);
-    } else {
+  /** Patient is done (happy or not): walk them out and move on. */
+  function afterPatient(r, sad) {
+    const pt = patient;
+    if (calmTarget) { app.removeTarget(calmTarget); calmTarget = null; }
+    if (mouthTarget) { app.removeTarget(mouthTarget); mouthTarget = null; }
+    if (work) { work.dispose(); work = null; }
+    boards.xray.clear();
+    patient = null;
+    guard(walkOut(pt.ch, sad));
+    if (mode === 'tutorial') { progress.tutorialDone = true; finish(); return; }
+    if (mode === 'shift') {
+      if (served >= SHIFT_PATIENTS) { finish(); return; }
       bigContent = { kind: 'result', r };
       state = 'result';
+      big.redraw();
+      layout();
+      starPop = 1;
+      sfx.play('star');
+      return;
     }
+    // event: straight on to the next patient
+    state = 'idle';
+    caseId = null;
+    layout();
+    refreshCard(true);
+    guard(wait(0.8).then(() => callNext()));
+  }
+
+  async function walkOut(ch, sad) {
+    walkers.add(ch);
+    await ch.standUp(EXIT);
+    ch.lookAt(null);
+    if (!sad) ch.face('happy');
+    doorOpen();
+    await ch.walkTo([{ x: 1.0, z: -1.7 }, DOOR_IN, DOOR_OUT], { speed: sad ? 0.8 : 1.2, sad });
+    doorClose();
+    removeCharacter(ch);
+  }
+
+  function checkShiftEnd() {
+    if (mode !== 'shift' || state === 'final') return false;
+    if (served >= SHIFT_PATIENTS && (state === 'idle' || state === 'result')) { finish(); return true; }
+    return false;
+  }
+
+  function finish() {
+    if (state === 'final') return;
+    // stop everything that was still scheduled (treatment steps, arrivals...)
+    token++;
+    for (const t of timers) t.done();
+    timers = [];
+    state = 'final';
+    returnAll();
+    tray.highlight(null);
+    rhythmOn = false;
+    rhythmPanel.mesh.visible = false;
+    let unlocked = [];
+    let newBest = false;
+    let rankUp = null;
+    if (mode !== 'tutorial') {
+      const before = progress.rank().name;
+      newBest = shift.score > progress.best(mode);
+      progress.addScore(shift.score, mode);
+      unlocked = progress.addStars(shift.stars);
+      const after = progress.rank().name;
+      if (after !== before) rankUp = after;
+      if (unlocked.length || rankUp) sfx.play('unlock');
+      tray.setGold(progress.has('golddrill'));
+      boards.decor.apply();
+      boards.rank.redraw();
+    }
+    if (mode === 'event') {
+      sfx.play('buzzer');
+      // everyone still around goes home
+      if (patient) { const pt = patient; patient = null; if (work) { work.dispose(); work = null; } room.chair.want = 0; guard(walkOut(pt.ch, false)); }
+    }
+    for (const w of [...waiting]) { waiting.splice(waiting.indexOf(w), 1); group.remove(w.bar); w.state = 'leaving'; walkers.add(w.ch); guard((async () => { await w.ch.standUp(w.seat.front); doorOpen(); await w.ch.walkTo([{ x: 1.7, z: -2.5 }, DOOR_IN, DOOR_OUT], { speed: 1.1 }); doorClose(); removeCharacter(w.ch); })()); }
+    bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : SHIFT_PATIENTS };
     big.redraw();
     layout();
     starPop = 1;
+    sfx.play('win');
+    assistant.act('clap', 2);
+    assistant.face('happy');
+    assistant.say(mode === 'tutorial' ? 'Hebat! Sekarang coba Mulai kerja, Dok!' : shift.lost === 0 ? 'Semua pasien senang! Keren!' : 'Kerja bagus, Dok!', 2.8);
+    fx.emit('confetti', new THREE.Vector3(0, 2.3, -1.0), 40, { speed: 0.7, size: 0.04, life: 2.4, gravity: 0.7, spread: 1.2 });
+  }
+
+  // ------------------------------------------------------------------ starting, resetting
+  function resetAll() {
+    token++;
+    for (const t of timers) t.done();
+    timers = [];
+    returnAll();
+    tray.highlight(null);
+    sfx.stopAll();
+    if (work) { work.dispose(); work = null; }
+    if (patient) { removeCharacter(patient.ch); patient = null; }
+    for (const w of waiting) { removeCharacter(w.ch); group.remove(w.bar); }
+    waiting.length = 0;
+    for (const ch of [...walkers]) removeCharacter(ch);
+    if (mouthTarget) { app.removeTarget(mouthTarget); mouthTarget = null; }
+    if (calmTarget) { app.removeTarget(calmTarget); calmTarget = null; }
+    boards.xray.clear();
+    doorUsers = 0;
+    room.door.want = 0;
+    room.chair.want = 0;
+    caseId = null;
+    rhythmOn = false;
+    rhythmPanel.mesh.visible = false;
+    pop.mesh.visible = false;
+  }
+
+  function start(m) {
+    resetAll();
+    mode = m;
+    shift = { score: 0, stars: 0, happy: 0, lost: 0, results: [] };
+    served = 0;
+    spawned = 0;
+    combo = 0;
+    eventLeft = EVENT_SECONDS;
+    nextArrival = mode === 'tutorial' ? Infinity : 7;
+    used.clear();
+    bHow.userData.setLabel('Cara main');
+    state = 'idle';
+    layout();
+    refreshCard(true);
+    assistant.face('smiley');
+    assistant.say(m === 'tutorial' ? 'Aku Suster Nana. Ikuti aku ya, Dok!' : m === 'event' ? 'Mode event! 3 menit, ayo cepat!' : 'Ayo mulai, Dok! Pasien pertama datang.', 2.6);
+    sfx.play('yay');
+    callNext();
+  }
+
+  function toTitle() {
+    resetAll();
+    mode = null;
+    state = 'title';
+    bigContent = { kind: 'title' };
+    big.redraw();
+    layout();
+    boards.rank.redraw();
   }
 
   // ------------------------------------------------------------------ per frame
   let frameNo = 0;
   let idleT = 1.5;
   let starPop = 0;
+  let waitTalkT = 4;
+  let chatT = 5;
   const assistantLook = new THREE.Vector3();
 
   function update(dt) {
     frameNo++;
     music.tryStart();
-    // desktop view: stand a little further back so the tray and the patient both fit
     if (!xr()) app.camera.position.set(0, 1.6, 0.3);
     app.camera.getWorldPosition(head);
     tickButtons(group, dt);
     room.update(paused ? 0 : dt);
     fx.update(dt);
     tray.update(dt);
+    boards.xray.update(dt);
+    boards.decor.update(dt, clock);
+    boards.tv.set({ mode: state === 'title' ? null : mode === 'tutorial' ? null : mode, timeLeft: Math.ceil(eventLeft), score: shift.score, combo: comboMult() });
     if (paused) return;
 
     clock += dt;
@@ -601,16 +1169,74 @@ export function createClinic(app) {
       t.t -= dt;
       if (t.t <= 0) { timers.splice(timers.indexOf(t), 1); t.done(); }
     }
+    const playing = mode && state !== 'title' && state !== 'final';
 
+    // event clock
+    if (playing && mode === 'event') {
+      eventLeft -= dt;
+      if (eventLeft <= 10 && Math.ceil(eventLeft) !== Math.ceil(eventLeft + dt)) sfx.play('beat');
+      if (eventLeft <= 0) { eventLeft = 0; finish(); }
+    }
+
+    // new arrivals for the bench
+    if (playing && mode !== 'tutorial' && state !== 'result') {
+      nextArrival -= dt;
+      const roomLeft = mode === 'event' || spawned < SHIFT_PATIENTS;
+      if (nextArrival <= 0 && roomLeft && waiting.length < BENCH_SEATS) {
+        nextArrival = mode === 'event' ? 7 + Math.random() * 5 : 10 + Math.random() * 6;
+        guard(arriveToBench());
+      }
+    }
+
+    // waiting patients: patience drains (not while you read a result card)
+    waitTalkT -= dt;
+    for (const w of [...waiting]) {
+      if (w.state === 'seated' && playing && state !== 'result') {
+        w.patience -= dt / w.max;
+        if (w.patience <= 0) { guard(benchGiveUp(w)); continue; }
+        if (w.patience < 0.3 && w.ch.faceName !== 'mad') { w.ch.face('mad'); w.ch.act('fist', 1); }
+      }
+      w.ch.lookAt(head);
+      w.ch.update(dt);
+      if (w.bar.visible) {
+        drawBar(w.bar, Math.max(0, w.patience));
+        w.ch.headWorld(w.bar.position).y += 0.33;
+      }
+    }
+    if (waitTalkT <= 0 && waiting.length) {
+      waitTalkT = 5 + Math.random() * 5;
+      const w = pick(waiting);
+      if (w.state === 'seated' && !w.ch.bubble.time) w.ch.say(w.personality === 'chatty' ? pick(LINES.chat) : w.patience < 0.3 ? pick(LINES.waitBored) : pick(LINES.waiting), 2.2);
+    }
+    for (const ch of walkers) ch.update(dt);
+
+    // the patient in the chair
     if (patient) {
-      if (patient.lookTarget) patient.lookTarget = head;
-      // while treating, the patient keeps an eye on the tool coming at them
+      const ch = patient.ch;
+      if (state === 'calm') ch.shake = Math.max(ch.shake, 0.25);
+      if (ch.lookTarget) ch.lookTarget = head;
       if (state === 'treat' && held.size) {
         const tool = [...held.values()][0];
         tool.tip.getWorldPosition(tmp);
-        patient.lookAt(tmp.distanceTo(patient.mouthWorld(tmp2)) < 0.35 ? head : tool.tip.getWorldPosition(new THREE.Vector3()));
-      } else if (state === 'treat' || state === 'react') patient.lookAt(head);
-      patient.update(dt);
+        ch.lookAt(tmp.distanceTo(ch.mouthWorld(tmp2)) < 0.35 ? head : tool.tip.getWorldPosition(new THREE.Vector3()));
+      } else if (state === 'treat' || state === 'react' || state === 'calm') ch.lookAt(head);
+      ch.update(dt);
+      // patience in the chair (none in the tutorial)
+      if ((state === 'treat' || state === 'calm') && mode !== 'tutorial') {
+        patience -= dt / patienceMax;
+        if (patience <= 0) { patience = 0; guard(leaveSad('bored')); }
+      }
+      // chatty patients keep talking
+      if (state === 'treat' && patient.personality === 'chatty') {
+        chatT -= dt;
+        if (chatT <= 0) { chatT = 4 + Math.random() * 3; ch.say(pick(LINES.chat), 2.2); }
+      }
+      // funny moment
+      if (funny && state === 'treat' && clock - treatStart > funny.at) { const f = funny.kind; funny = null; guard(runFunny(f)); }
+      if (sleeping && state === 'treat' && Math.random() < dt * 1.3) {
+        fx.emit('zzz', ch.headWorld(tmp).add(new THREE.Vector3(0.08, 0.2, 0)), 1, { speed: 0.05, size: 0.06, up: 0.18, life: 1.6 });
+        if (Math.random() < 0.4) sfx.play('snore');
+      }
     }
     // the assistant watches the dentist, or the tool in their hand
     const tool0 = [...held.values()][0];
@@ -618,26 +1244,56 @@ export function createClinic(app) {
     else if (!assistant.lookTarget || assistant.lookTarget === assistantLook) assistant.lookAt(head);
     if (state === 'title' || state === 'final') {
       idleT -= dt;
-      if (idleT <= 0 && !assistant.action) { idleT = 5 + Math.random() * 4; assistant.act(pick(['wave', 'thumbs', 'wave']), 1.8); assistant.face('smiley'); }
+      if (idleT <= 0 && !assistant.action) {
+        idleT = 5 + Math.random() * 4;
+        assistant.act(pick(['wave', 'thumbs', 'wave']), 1.8);
+        assistant.face('smiley');
+        if (state === 'title' && !progress.tutorialDone && Math.random() < 0.6) assistant.say('Baru pertama? Coba Tutorial dulu, Dok!', 2.6);
+      }
     }
     assistant.update(dt);
     if (assistant.faceName !== 'neutral' && !assistant.bubble.time && !assistant.action) assistant.face('neutral');
 
+    // rhythm light for the root canal file
+    const step = caseId && CASES[caseId].steps[stepIdx];
+    rhythmOn = !!(step?.rhythm && (state === 'treat' || state === 'react'));
+    rhythmPanel.mesh.visible = rhythmOn;
+    if (rhythmOuchCool > 0) rhythmOuchCool = Math.max(0, rhythmOuchCool - dt);
+    if (rhythmOn) {
+      rhythmT += dt;
+      const g = rhythmT % 1.3 < 0.75;
+      if (g !== rhythmGreen) { rhythmGreen = g; rhythmPanel.redraw(); if (g) sfx.play('beat'); }
+      patient.ch.headWorld(rhythmPanel.mesh.position).y += 0.36;
+      rhythmPanel.mesh.lookAt(head);
+    }
+
     // tools touching the mouth
+    ring.visible = false;
     if (state === 'treat' || state === 'react') {
       elapsed = clock - treatStart;
-      const mouth = patient ? patient.mouthWorld(tmp2) : null;
+      const mouth = patient ? patient.ch.mouthWorld(tmp2) : null;
       for (const [pointer, tool] of held) {
         tool.working = false;
         let inside = false;
+        const target = step && tool.id === step.tool && work ? work.target(step.tool, stepProgress) : null;
+        if (target) {
+          target.getWorldPosition(tmp3);
+          ring.visible = true;
+          ring.position.copy(tmp3);
+          ring.lookAt(head);
+          ring.scale.setScalar(1 + Math.sin(clock * 8) * 0.15);
+        }
         if (pointer.object) {
           tool.tip.getWorldPosition(tmp);
           inside = mouth && tmp.distanceTo(mouth) < MOUTH_REACH;
+          // the right tool has to touch the exact tooth for tooth-by-tooth steps
+          if (inside && target) inside = tmp.distanceTo(tmp3) < TARGET_REACH;
         } else if (deskWork && deskWork.pointer === pointer && frameNo - deskWork.frame <= 1) {
           inside = true;
-          // move the tool so its tip touches where you clicked
-          const target = app.camera.worldToLocal(tmp.copy(deskWork.hit.point));
-          tool.holdPos = target.sub(tool.tip.position.clone().applyQuaternion(DESK_QUAT));
+          // move the tool so its tip touches where you clicked (or the target tooth)
+          const at = target ? tmp3 : deskWork.hit.point;
+          const local = app.camera.worldToLocal(tmp.copy(at));
+          tool.holdPos = local.sub(tool.tip.position.clone().applyQuaternion(DESK_QUAT));
         } else if (!pointer.object) {
           tool.holdPos = DESK_POS.clone();
         }
@@ -647,31 +1303,52 @@ export function createClinic(app) {
         if (!tool.working && tool.sound) sfx.loop(tool.sound, false);
       }
       work?.update(dt);
-      refreshCard();
     } else if (work) work.update(dt);
+    if (playing) refreshCard();
 
+    if (popT > 0) {
+      popT -= dt;
+      pop.mesh.position.y = 1.62 + (2.2 - popT) * 0.05;
+      if (popT <= 0) pop.mesh.visible = false;
+    }
     if (starPop > 0) starPop = Math.max(0, starPop - dt);
     big.mesh.scale.setScalar(1 + Math.sin(starPop * Math.PI) * 0.04);
   }
 
   // first screen
   assistant.lookAt(head);
-  assistant.say('Selamat datang, Dok!', 3);
+  assistant.say('Selamat datang di FDC Dental Clinic, Dok!', 3);
   layout();
 
   // debug hooks for testing in a browser console
   window.dentist = {
     get state() { return state; },
+    get mode() { return mode; },
     get step() { return CASES[caseId]?.steps[stepIdx]?.tool; },
-    get patient() { return patient; },
-    tray, held, startShift, nextPatient,
+    get patient() { return patient?.ch; },
+    get data() { return patient; },
+    get waiting() { return waiting; },
+    get shift() { return shift; },
+    get combo() { return combo; },
+    tray, held, start, nextPatient, toTitle, boards, assistant,
+    startShift: () => start('shift'),
     pick(id) { tray.onPick(tray.tools[id], app.pointers.mouse); },
+    calm() { calmDown(app.pointers.mouse); },
+    xray() { boards.onXray(); },
+    funny(kind) { if (patient) guard(runFunny(kind)); },
     work(seconds = 1) {
       const t = held.get(app.pointers.mouse);
       const s0 = stepIdx;
-      for (let i = 0; i < seconds * 30 && stepIdx === s0 && state === 'treat'; i++) workOn(t, 1 / 30, app.pointers.mouse, i === 0);
+      for (let i = 0; i < seconds * 30 && stepIdx === s0 && state === 'treat'; i++) {
+        if (CASES[caseId].steps[stepIdx].rhythm) { rhythmGreen = true; }
+        workOn(t, 1 / 30, app.pointers.mouse, i === 0);
+      }
     },
     skip(s) { for (const t of timers) t.t = Math.min(t.t, s ?? 0); },
+    setEventLeft(v) { eventLeft = v; },
+    force(list) { forced = list; },
+    get arrivalIn() { return nextArrival; },
+    set arrivalIn(v) { nextArrival = v; },
   };
 
   return {
@@ -693,18 +1370,19 @@ export function createClinic(app) {
 }
 
 // ------------------------------------------------------------------ helpers
-function shuffle(list) {
-  const a = [...list];
-  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-  return a;
+function fmt(secs) {
+  const s = Math.max(0, Math.floor(secs));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 function sideOf(ch) {
   return new THREE.Vector3(1, 0, 0).applyQuaternion(ch.head.getWorldQuaternion(new THREE.Quaternion()));
 }
-function rankOf(stars) {
-  if (stars >= 9) return 'Dokter Gigi Legendaris!';
-  if (stars >= 7) return 'Dokter Gigi Hebat!';
-  if (stars >= 4) return 'Dokter Gigi Muda';
+function rankOf(stars, patients) {
+  const max = Math.max(1, patients * 3);
+  const k = stars / max;
+  if (k >= 0.9) return 'Dokter Gigi Legendaris!';
+  if (k >= 0.7) return 'Dokter Gigi Hebat!';
+  if (k >= 0.4) return 'Dokter Gigi Muda';
   return 'Masih belajar... coba lagi!';
 }
 function drawStars(c, x, y, r, n, total = 3) {

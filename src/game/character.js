@@ -11,7 +11,7 @@ import { FONT, roundRect, wrap } from '../core/ui.js';
  *   c.sitDown(seat)             → Promise
  *   c.standUp()                 → Promise
  *   c.face('pain')              neutral | happy | aaa | pain | mad | sad | numb | talk
- *   c.act('wave', 1.5)          wave | fist | facepalm | clap | cheer | thumbs | point | shrug
+ *   c.act('wave', 1.5)          wave | fist | facepalm | clap | cheer | thumbs | point | shrug | cover | phone | shiver | calm
  *   c.say('Halo Dok!', 2.5)     speech bubble
  */
 
@@ -39,6 +39,8 @@ const FACES = {
   sad: { eye: 0.65, brow: 0, browY: 0.004, sad: 1, mouth: 'frown', open: 0, blush: 0.2, red: 0, py: -0.012 },
   numb: { eye: 0.55, brow: -0.1, browY: 0.008, sad: 0.3, mouth: 'open', open: 0.55, blush: 0.4, red: 0, py: -0.004 },
   scared: { eye: 1.25, brow: 0, browY: 0.016, sad: 0.8, mouth: 'open', open: 0.45, blush: 0.2, red: 0, py: 0 },
+  sleep: { eye: 0.06, brow: -0.1, browY: 0, sad: 0, mouth: 'open', open: 0.35, blush: 0.6, red: 0, py: 0 },
+  sneeze: { eye: 0.1, brow: 0.3, browY: 0.014, sad: 0.4, mouth: 'open', open: 0.8, blush: 0.9, red: 0.3, py: 0 },
 };
 
 export class Character {
@@ -144,6 +146,8 @@ export class Character {
     }
     this.addHair(hairMat, o.hairStyle);
     if (o.cap) this.addNurseCap();
+    if (o.shades) this.addShades();
+    if (o.badge) this.addBadge(o.badge);
 
     // eyes: white, pupil, shine; an "X" version for pain
     this.eyes = [-1, 1].map((s) => {
@@ -420,6 +424,58 @@ export class Character {
   mouthWorld(v = new THREE.Vector3()) { return this.cavity.getWorldPosition(v); }
   headWorld(v = new THREE.Vector3()) { return this.head.getWorldPosition(v); }
 
+  /** VIP: cool sunglasses pushed up on the head. */
+  addShades() {
+    const g = new THREE.Group();
+    const lens = std('#1f2a33', { metalness: 0.6, roughness: 0.15 });
+    for (const s of [-1, 1]) {
+      const l = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 8), lens);
+      l.scale.set(0.05, 0.035, 0.012);
+      l.position.set(0.06 * s, 0, 0);
+      g.add(l);
+    }
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.008, 0.008), std('#f2c14e', { metalness: 0.8, roughness: 0.3 }));
+    g.add(bridge);
+    g.position.set(0, 0.2, 0.15);
+    g.rotation.x = -0.75;
+    this.head.add(g);
+  }
+
+  /** A small name badge on the chest (FDC branding). */
+  addBadge(label) {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff';
+    g.beginPath(); g.roundRect(4, 4, 248, 120, 26); g.fill();
+    g.strokeStyle = '#5fb89a'; g.lineWidth = 8; g.stroke();
+    g.fillStyle = '#3f8f74'; g.font = '900 64px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(label, 128, 68);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.07, 0.035), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+    m.position.set(0.06, 0.34, 0.112);
+    this.torso.add(m);
+  }
+
+  /** Kids get a shiny star sticker on their shirt after a good visit. */
+  addSticker() {
+    if (this.sticker) return;
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#f7c95e';
+    g.beginPath();
+    for (let i = 0; i < 10; i++) { const r = i % 2 ? 26 : 60; const a = (i / 10) * Math.PI * 2 - Math.PI / 2; g.lineTo(64 + Math.cos(a) * r, 66 + Math.sin(a) * r); }
+    g.fill();
+    g.fillStyle = '#e98aa4'; g.beginPath(); g.arc(64, 66, 14, 0, Math.PI * 2); g.fill();
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    this.sticker = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.06), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+    this.sticker.position.set(-0.06, 0.32, 0.113);
+    this.torso.add(this.sticker);
+  }
+
   // ------------------------------------------------------------------ per-frame animation
   update(dt, cameraPos) {
     this.t += dt;
@@ -591,6 +647,9 @@ export class Character {
         if (a === 'point' && right) { ax = -1.35; az = 0.5; aex = -0.1; }
         if (a === 'shrug') { ax = -0.4; az = 0.65 * side; aex = -1.4; aez = 0.5 * side; }
         if (a === 'cover') { ax = -2.2; az = -0.35 * side; aex = -1.9; } // hands over the mouth
+        if (a === 'phone' && right) { ax = -2.0; az = 0.35; aex = -2.2; } // hand to the ear
+        if (a === 'shiver') { ax = -1.0 + Math.sin(t * 40 + i) * 0.08; az = -0.3 * side; aex = -1.6; } // arms hugging
+        if (a === 'calm' && right) { ax = -1.1; az = -0.2; aex = -0.5; aez = Math.sin(t * 6) * 0.3; } // gentle pat
         sx = lerp(sx, ax, k); sz = lerp(sz, az, k); ex = lerp(ex, aex, k); ez = lerp(ez, aez, k);
       }
       set(`sx${i}`, sx); set(`sz${i}`, sz); set(`ex${i}`, ex); set(`ez${i}`, ez);

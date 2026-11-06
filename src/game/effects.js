@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+const CONFETTI = ['#f6b9c9', '#e98aa4', '#9ed9c2', '#5fb89a', '#f7c95e', '#a8d8f0', '#b9a7e8'];
+
 /** Little canvas pictures for the particles. */
 function drawTexture(kind) {
   const S = 128;
@@ -57,6 +59,21 @@ function drawTexture(kind) {
       g.beginPath(); g.moveTo(14, -44); g.quadraticCurveTo(14, -14, 44, -14); g.stroke();
       g.restore();
     }
+  } else if (kind === 'confetti') {
+    g.fillStyle = '#ffffff';
+    g.fillRect(m - 22, m - 40, 44, 80);
+  } else if (kind === 'zzz') {
+    g.fillStyle = '#7b8fd6';
+    g.font = '900 96px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('Z', m, m + 4);
+  } else if (kind === 'note') {
+    g.fillStyle = '#e98aa4';
+    g.font = '900 100px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('♪', m, m + 4);
   } else if (kind === 'blood') {
     g.fillStyle = '#d64553';
     g.beginPath(); g.arc(m, m, 40, 0, Math.PI * 2); g.fill();
@@ -79,7 +96,7 @@ function drawTexture(kind) {
 export class Effects {
   constructor(parent, size = 120) {
     this.maps = {};
-    for (const k of ['star', 'puff', 'tear', 'drop', 'heart', 'bit', 'anger', 'blood', 'glow']) this.maps[k] = drawTexture(k);
+    for (const k of ['star', 'puff', 'tear', 'drop', 'heart', 'bit', 'anger', 'blood', 'glow', 'confetti', 'zzz', 'note']) this.maps[k] = drawTexture(k);
     this.pool = [];
     for (let i = 0; i < size; i++) {
       // each sprite has its own material (own opacity); only the picture is swapped
@@ -99,6 +116,7 @@ export class Effects {
       const s = this.pool[this.next];
       this.next = (this.next + 1) % this.pool.length;
       s.material.map = this.maps[kind] || this.maps.glow;
+      s.material.color.set(kind === 'confetti' ? CONFETTI[Math.floor(Math.random() * CONFETTI.length)] : '#ffffff');
       s.visible = true;
       s.position.set(pos.x + (Math.random() - 0.5) * spread, pos.y + (Math.random() - 0.5) * spread, pos.z + (Math.random() - 0.5) * spread);
       const d = s.userData;

@@ -1,13 +1,46 @@
 # FDC Dentist
 
-A cartoon dental clinic game for Meta Quest 3. You are the dentist.
+A dental clinic game for Meta Quest 3. You are the dentist at FDC Dental Clinic.
 
-- Patients walk in through the door, say what hurts, sit in the chair and open wide.
-- Pick the right instrument from the tray for each step of their treatment.
-- A wrong instrument hurts them (tears) or annoys them (steam, red face). After 3 mistakes they walk out, disappointed.
-- Each patient gets stars and points. A shift is 3 patients, and your best score is saved on the headset.
+- Patients walk in through the door and wait on the bench, each with a patience bar.
+- Call them to the chair, then pick the right instrument from the tray for each step of their treatment.
+- A wrong instrument hurts them (tears) or annoys them (steam, red face). Too many mistakes, or too long a wait, and they walk out.
+- Perfect patients in a row build a combo (×1.5, ×2, ×3). Stars add up over time to ranks and unlocks.
 
-Built with Three.js + WebXR, in soft green, pink and white. Everything (room, characters, tools, sounds) is made in code: there are no model or audio files.
+Built with Three.js + WebXR, in soft green, pink and white. Everything (room, characters, tools, sounds, music) is made in code: there are no model or audio files.
+
+## Modes
+
+| Mode | What it is |
+| --- | --- |
+| **Tutorial** | Suster Nana walks you through one scaling patient. The right tool glows on the tray, and mistakes don't count. |
+| **Mulai kerja** (shift) | 5 patients. A result card after each one, with a dental fun fact. |
+| **Mode Event** | 3 minutes, as many patients as you can. Made for events: the score and timer are on the room TV. |
+
+## Patients
+
+| Type | What's different |
+| --- | --- |
+| Normal | 3 hearts (wrong tools allowed). |
+| Penakut (scared) | Shakes in the chair. Point the laser at them and pull the trigger 3 times to calm them first (+50). Only 2 hearts. |
+| Cerewet (chatty) | Keeps talking while you work. More patient. |
+| VIP | Sunglasses, double points, but very impatient. |
+| Anak (kid) | Smaller, cries at every mistake, gets a star sticker at the end. Usually a kids' check-up. |
+
+Funny moments can happen during treatment: a sneeze that knocks your tool back to the tray, a phone call that pauses the work, a patient falling asleep (+30 if you finish without waking them), or hiccups.
+
+## Ranks and unlocks
+
+Every star you earn is kept on the headset. The sign above the door shows your rank: Dokter Magang → Dokter Muda (8★) → Dokter Hebat (20★) → Dokter Spesialis (40★) → Dokter Gigi Legenda (70★).
+
+| Stars | Unlock |
+| --- | --- |
+| 5 | Party balloons in the room |
+| 12 | Gold drill |
+| 25 | Trophy on the shelf |
+| 40 | Confetti rain for every perfect patient |
+
+The TV on the right wall shows today's top 5 scores.
 
 ## Commands
 
@@ -61,17 +94,17 @@ In the stand-alone app there are no **Lobby FDC** buttons. They only appear when
 | Scaling | check (mirror) → remove tartar (scaler) → suck up water (suction) |
 | Extraction | numb (syringe) → pull the loose tooth (forceps) → stop the bleeding (gauze) |
 | Filling | find the cavity (mirror) → clean it (drill) → fill it (filling) → harden it (blue light) |
+| Whitening | check the colour (mirror) → gel on each tooth (gel brush) → light it (blue light) → rinse (suction) |
+| Braces | check (mirror) → a bracket on each tooth (bracket) → harden the glue (blue light) → the wire (braces wire) |
+| Root canal | check the X-ray (press the screen on the left) → numb (syringe) → open the tooth (drill) → clean the canal **in rhythm** (root file: only file while the sign says GOSOK) → close it (filling) |
+| Kids' check-up | count the teeth (mirror) → strawberry fluoride (gel brush) → suck it up (suction) |
 
-The patient card on the right shows what to do, not which tool to use. The nurse names the right tool after a mistake.
+The patient card on the right shows what to do, not which tool to use (except in the tutorial). The nurse names the right tool after a mistake. In VR, tooth-by-tooth steps show a pink ring: touch that tooth with the tool's tip.
 
 ## Scoring
 
-- **Completed patient:** 100 per step, +100 with no mistakes, a speed bonus, and −40 per wrong tool.
-- **Stars:**
-  - 3 stars: no mistakes and fast.
-  - 2 stars: at most 1 mistake.
-  - 1 star: everything else.
-- **Patient walked out:** 0 stars and 50 points per finished step.
+- **Completed patient:** 100 per step, +100 with no mistakes, a speed bonus, calm/sleep bonuses, −40 per wrong tool, then × combo × patient type (VIP ×2, scared and kids ×1.2).
+- **Stars:** 3 for no mistakes and fast, 2 for at most 1 mistake, 1 otherwise. 0 if they walk out.
 
 ## Files
 
@@ -81,11 +114,13 @@ src/game/game.js   the game: patient flow, treating, mistakes, scoring, panels
 src/game/cases.js  treatments, steps, patient names and looks, all the lines they say
 src/game/character.js  cartoon people: body, face, expressions, walk/sit/wave/cheer...
 src/game/mouth.js  what the teeth look like for each treatment, and how they change
-src/game/tools.js  the 9 instruments and the tray
+src/game/tools.js  the 13 instruments and the tray
 src/game/room.js   the treatment room, chair, door, lamp
 src/game/effects.js  sparkles, tears, steam, hearts
 src/game/sfx.js    synthesized sounds (drill, scaler, suction, ouch, door...)
 src/game/music.js  cheerful background music, synthesized live (F major, 116 BPM)
+src/game/boards.js X-ray screen, score TV, rank sign, FDC sign, unlockable decorations
+src/game/progress.js  stars, ranks, unlocks and the score board (saved on the headset)
 ```
 
 ## Add a treatment

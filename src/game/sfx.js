@@ -84,6 +84,21 @@ export class Sfx {
       case 'sad': [392, 370, 349, 262].forEach((f, i) => this.tone(f, f * 0.97, i === 3 ? 0.7 : 0.3, 'sawtooth', 0.035, i * 0.32)); break;
       case 'hello': this.tone(600, 900, 0.12, 'sine', 0.05); this.tone(900, 700, 0.14, 'sine', 0.05, 0.12); break;
       case 'yay': [660, 880, 1100].forEach((f, i) => this.tone(f, f * 1.2, 0.12, 'sine', 0.05, i * 0.08)); break;
+      case 'combo': [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, f * 1.01, 0.16, 'square', 0.035, i * 0.06)); this.tone(2093, null, 0.3, 'sine', 0.05, 0.26); break;
+      case 'sneeze-in': this.tone(400, 900, 0.5, 'sine', 0.04); this.tone(420, 950, 0.45, 'triangle', 0.02, 0.5); break;
+      case 'sneeze': this.burst(0.35, 2200, 0.6, 0.14); this.tone(700, 200, 0.2, 'sawtooth', 0.05); break;
+      case 'ring': for (let i = 0; i < 6; i++) { this.tone(1320, null, 0.07, 'square', 0.03, i * 0.1); this.tone(1660, null, 0.07, 'square', 0.03, i * 0.1 + 0.05); } break;
+      case 'snore': this.burst(0.7, 260, 2, 0.06); this.tone(90, 70, 0.7, 'sawtooth', 0.02); break;
+      case 'hik': this.tone(500, 1100, 0.08, 'sine', 0.07); break;
+      case 'sticker': this.tone(900, 1800, 0.1, 'sine', 0.06); [1319, 1568, 2093].forEach((f, i) => this.tone(f, null, 0.14, 'triangle', 0.04, 0.1 + i * 0.07)); break;
+      case 'unlock': [523, 784, 1047, 1568, 2093].forEach((f, i) => this.tone(f, null, 0.3, 'triangle', 0.06, i * 0.09)); break;
+      case 'scan': this.tone(300, 1800, 0.8, 'sine', 0.03); this.tone(320, 1900, 0.8, 'triangle', 0.015, 0.05); break;
+      case 'beat': this.tone(1000, null, 0.05, 'sine', 0.04); break;
+      case 'aw': this.tone(900, 600, 0.18, 'triangle', 0.05); break;
+      case 'calm': [523, 659, 784].forEach((f, i) => this.tone(f, null, 0.25, 'sine', 0.05, i * 0.12)); break;
+      case 'clap': for (let i = 0; i < 6; i++) this.burst(0.05, 1500, 1, 0.06, i * 0.09 + Math.random() * 0.03); break;
+      case 'bell': this.tone(1568, null, 0.6, 'sine', 0.06); this.tone(2349, null, 0.4, 'sine', 0.025, 0.02); break;
+      case 'buzzer': this.tone(220, 200, 0.6, 'square', 0.05); this.tone(233, 210, 0.6, 'square', 0.04); break;
       default: break;
     }
   }

@@ -27,154 +27,228 @@ const COLS = 5;
 const ROWS = 3;
 
 const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.45, ...o });
-const METAL = mat('#dfe7ec', { metalness: 0.85, roughness: 0.22 });
+// Bright brushed steel: without a reflection map, high metalness renders dark, so keep it moderate.
+const STEEL = mat('#e8eef2', { metalness: 0.4, roughness: 0.28 });
+const STEEL_DARK = mat('#c3cdd3', { metalness: 0.45, roughness: 0.32 });
+const WHITE = mat('#fbfbfb', { roughness: 0.35 });
+const GREY = mat('#9aa6ad', { roughness: 0.6 });
+const RUBBER = (c) => mat(c, { roughness: 0.75 });
+const at = (o, x, y, z) => { o.position.set(x, y, z); return o; };
 const cyl = (r1, r2, len, m, seg = 14) => {
   const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, len, seg), m);
   mesh.rotation.x = Math.PI / 2; // along Z
   return mesh;
 };
-const at = (o, x, y, z) => { o.position.set(x, y, z); return o; };
 
-function handle(color, len = 0.12) {
-  const g = new THREE.Group();
-  g.add(at(cyl(0.0095, 0.0095, len, mat(color)), 0, 0, -len / 2));
-  g.add(at(cyl(0.0108, 0.0108, 0.035, mat(P.white, { roughness: 0.35 })), 0, 0, -0.03));
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.0095, 12, 8), mat(color));
-  g.add(at(cap, 0, 0, 0));
-  return g;
+/**
+ * A smooth turned shape along -Z (handles, bodies). `profile` is a list of [radius, distance]
+ * pairs, distance measured from the back end (z = 0) toward the tip (z = -distance).
+ */
+function lathe(profile, m, seg = 18) {
+  const geo = new THREE.LatheGeometry(profile.map(([r, d]) => new THREE.Vector2(Math.max(r, 0.0001), d)), seg);
+  geo.rotateX(-Math.PI / 2);
+  return new THREE.Mesh(geo, m);
+}
+/** A bent rod through points [x, y, z] (necks, shanks, light guides, beaks). */
+function rod(points, r, m, r2 = r) {
+  const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)));
+  const geo = new THREE.TubeGeometry(curve, 24, r, 8, false);
+  if (r2 !== r) {
+    // taper toward the end
+    const pos = geo.attributes.position;
+    const n = 25;
+    const ring = 9;
+    for (let i = 0; i < n; i++) {
+      const k = 1 - (i / (n - 1)) * (1 - r2 / r);
+      const c = curve.getPointAt(i / (n - 1));
+      for (let j = 0; j < ring; j++) {
+        const idx = i * ring + j;
+        const v = new THREE.Vector3().fromBufferAttribute(pos, idx).sub(c).multiplyScalar(k).add(c);
+        pos.setXYZ(idx, v.x, v.y, v.z);
+      }
+    }
+    geo.computeVertexNormals();
+  }
+  return new THREE.Mesh(geo, m);
+}
+/** A typical dental hand instrument handle: knurled steel with a soft coloured grip. */
+function instrumentHandle(g, color, len = 0.12) {
+  g.add(lathe([[0, 0], [0.0045, 0.002], [0.0055, 0.01], [0.0055, len - 0.012], [0.0042, len], [0, len]], STEEL));
+  g.add(lathe([[0.0062, 0.02], [0.0072, 0.03], [0.0072, 0.075], [0.0062, 0.085]], RUBBER(color)));
+  for (let i = 0; i < 6; i++) g.add(at(cyl(0.0074, 0.0074, 0.0012, mat(color, { roughness: 0.6 }), 16), 0, 0, -0.034 - i * 0.008));
+}
+/** Two arms meeting at a hinge (pliers, forceps, tweezers). */
+function pliers(g, { grip, gripLen = 0.1, spread = 0.012, beak }) {
+  for (const s of [-1, 1]) {
+    g.add(rod([[s * spread, 0, 0.0], [s * spread * 1.05, 0, -gripLen * 0.5], [s * 0.004, 0, -gripLen]], 0.0034, STEEL_DARK));
+    if (grip) g.add(rod([[s * spread, 0, -0.005], [s * spread * 1.05, 0, -gripLen * 0.5], [s * spread * 0.6, 0, -gripLen * 0.8]], 0.0048, RUBBER(grip)));
+    beak(s);
+  }
+  g.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.0055, 12, 8), STEEL), 0, 0, -gripLen));
 }
 
 const BUILD = {
   mirror(g) {
-    g.add(handle(P.mint));
-    g.add(at(cyl(0.0028, 0.0028, 0.05, METAL), 0, 0, -0.145));
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.004, 24), mat('#eef6fb', { metalness: 1, roughness: 0.05 }));
-    disc.rotation.x = 0.5;
-    return at(disc, 0, 0.004, -0.178);
+    instrumentHandle(g, P.mint);
+    g.add(rod([[0, 0, -0.12], [0, 0, -0.15], [0, -0.004, -0.168]], 0.0018, STEEL));
+    const head = new THREE.Group();
+    head.add(cyl(0.0125, 0.0125, 0.003, STEEL, 24));
+    const glass = cyl(0.0112, 0.0112, 0.0008, mat('#eaf6ff', { metalness: 0.9, roughness: 0.04, emissive: '#bfe6ff', emissiveIntensity: 0.25 }), 24);
+    glass.position.z = -0.0016;
+    head.add(glass);
+    head.rotation.x = -1.1; // the mirror faces down and forward
+    g.add(at(head, 0, -0.008, -0.176));
+    return at(new THREE.Object3D(), 0, -0.01, -0.178);
   },
   scaler(g) {
-    g.add(handle(P.pink));
-    g.add(at(cyl(0.006, 0.0025, 0.04, METAL), 0, 0, -0.14));
-    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.009, 0.0022, 6, 12, Math.PI * 0.9), METAL);
-    hook.rotation.y = Math.PI / 2;
-    return at(hook, 0, -0.008, -0.166);
+    instrumentHandle(g, P.pink);
+    // tapered shank that bends down into a pointed sickle
+    g.add(rod([[0, 0, -0.118], [0, 0, -0.145], [0, -0.006, -0.162], [0, -0.016, -0.166]], 0.0022, STEEL, 0.0008));
+    const blade = new THREE.Mesh(new THREE.ConeGeometry(0.0016, 0.012, 8), STEEL);
+    blade.rotation.x = Math.PI; // point down
+    g.add(at(blade, 0, -0.021, -0.166));
+    return at(new THREE.Object3D(), 0, -0.026, -0.166);
   },
   suction(g) {
-    g.add(at(cyl(0.011, 0.011, 0.05, mat('#9aa8b0')), 0, 0, 0.02));
-    g.add(at(cyl(0.0085, 0.0085, 0.15, mat('#ffffff', { roughness: 0.3, transparent: true, opacity: 0.92 })), 0, 0, -0.075));
-    const bend = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.0085, 8, 14, Math.PI / 2), mat('#ffffff'));
-    bend.rotation.y = Math.PI / 2;
-    g.add(at(bend, 0, -0.02, -0.15));
-    return at(new THREE.Object3D(), 0, -0.03, -0.17);
-  },
-  syringe(g) {
-    g.add(at(cyl(0.012, 0.012, 0.085, mat('#ffffff', { transparent: true, opacity: 0.55, roughness: 0.1 })), 0, 0, -0.06));
-    g.add(at(cyl(0.009, 0.009, 0.05, mat(P.pink, { emissive: '#f48aa8', emissiveIntensity: 0.15 })), 0, 0, -0.08));
-    g.add(at(cyl(0.004, 0.004, 0.05, mat(P.mint)), 0, 0, 0.0));
-    const thumb = cyl(0.016, 0.016, 0.005, mat(P.mint));
-    g.add(at(thumb, 0, 0, 0.025));
-    for (const s of [-1, 1]) g.add(at(cyl(0.01, 0.01, 0.004, mat(P.mint)), s * 0.016, 0, -0.022));
-    g.add(at(cyl(0.004, 0.001, 0.012, METAL), 0, 0, -0.108));
-    g.add(at(cyl(0.0011, 0.0008, 0.045, METAL), 0, 0, -0.135));
-    return at(new THREE.Object3D(), 0, 0, -0.158);
-  },
-  forceps(g) {
-    const grip = mat(P.pink);
-    for (const s of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.006, 0.13), grip);
-      arm.rotation.y = s * 0.06;
-      g.add(at(arm, s * 0.008, 0, -0.04));
-      const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.005, 0.06), METAL);
-      jaw.rotation.y = -s * 0.07;
-      jaw.rotation.x = 0.35;
-      g.add(at(jaw, s * 0.004, -0.01, -0.13));
-    }
-    g.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.008, 10, 8), METAL), 0, 0, -0.1));
-    return at(new THREE.Object3D(), 0, -0.02, -0.16);
-  },
-  gauze(g) {
-    for (const s of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.004, 0.13), METAL);
-      arm.rotation.y = s * 0.04;
-      g.add(at(arm, s * 0.004, 0, -0.065));
-    }
-    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.012, 0.03), mat('#ffffff', { roughness: 0.95 }));
-    return g.add(at(pad, 0, 0, -0.14)), at(new THREE.Object3D(), 0, 0, -0.145);
+    // high-volume suction: grey hose, valve body, then a white tube with an angled tip
+    g.add(rod([[0, -0.03, 0.03], [0, -0.006, 0.014], [0, 0, 0.0]], 0.0075, GREY)); // hose stub (short, so it fits the tray)
+    g.add(lathe([[0.009, 0], [0.0105, 0.004], [0.0105, 0.05], [0.009, 0.055]], mat(P.mint, { roughness: 0.4 })));
+    g.add(at(cyl(0.004, 0.004, 0.012, WHITE), 0.011, 0, -0.025));
+    g.add(rod([[0, 0, -0.05], [0, 0, -0.12], [0, -0.012, -0.155], [0, -0.03, -0.17]], 0.0065, mat('#ffffff', { roughness: 0.25, transparent: true, opacity: 0.92 })));
+    return at(new THREE.Object3D(), 0, -0.036, -0.172);
   },
   drill(g) {
-    g.add(at(cyl(0.011, 0.012, 0.15, mat('#ffffff', { roughness: 0.3 })), 0, 0, -0.06));
-    g.add(at(cyl(0.0125, 0.0125, 0.02, mat(P.mint)), 0, 0, -0.03));
-    g.add(at(cyl(0.006, 0.006, 0.04, mat('#9aa8b0')), 0, 0, 0.03));
-    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.02, 16), mat('#ffffff'));
-    g.add(at(head, 0, -0.008, -0.142));
-    const bur = new THREE.Mesh(new THREE.CylinderGeometry(0.0018, 0.0012, 0.018, 8), METAL);
-    g.add(at(bur, 0, -0.026, -0.142));
-    return at(new THREE.Object3D(), 0, -0.034, -0.142);
+    // contra-angle handpiece: hose connector, slim body, angled neck, head with the bur pointing down
+    g.add(rod([[0, -0.03, 0.03], [0, -0.006, 0.014], [0, 0, 0.0]], 0.0065, GREY));
+    g.add(lathe([[0.0075, 0], [0.0095, 0.006], [0.0105, 0.02], [0.01, 0.07], [0.0082, 0.11], [0.0065, 0.13]], WHITE));
+    g.add(at(cyl(0.0107, 0.0107, 0.006, mat(P.mint), 18), 0, 0, -0.03));
+    g.add(at(cyl(0.0102, 0.0102, 0.0015, STEEL, 18), 0, 0, -0.018));
+    g.add(rod([[0, 0, -0.128], [0, -0.004, -0.145], [0, -0.009, -0.158]], 0.0056, STEEL));
+    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.0072, 0.0072, 0.011, 18), STEEL);
+    g.add(at(head, 0, -0.011, -0.162));
+    const bur = new THREE.Mesh(new THREE.CylinderGeometry(0.0011, 0.0009, 0.014, 8), mat('#f2c14e', { metalness: 0.7, roughness: 0.3 }));
+    g.add(at(bur, 0, -0.023, -0.162));
+    return at(new THREE.Object3D(), 0, -0.031, -0.162);
   },
   filling(g) {
-    g.add(handle(P.mintDeep));
-    g.add(at(cyl(0.003, 0.003, 0.04, METAL), 0, 0, -0.14));
-    const paddle = new THREE.Mesh(new THREE.SphereGeometry(0.008, 12, 8), METAL);
-    paddle.scale.set(1, 0.4, 1.4);
-    g.add(at(paddle, 0, 0, -0.163));
-    const putty = new THREE.Mesh(new THREE.SphereGeometry(0.008, 12, 8), mat('#fff6e4', { roughness: 0.8 }));
-    return g.add(at(putty, 0, 0.005, -0.166)), at(new THREE.Object3D(), 0, 0.002, -0.168);
+    instrumentHandle(g, P.mintDeep);
+    g.add(rod([[0, 0, -0.118], [0, 0, -0.15], [0, -0.006, -0.163]], 0.002, STEEL, 0.0012));
+    const paddle = new THREE.Mesh(new THREE.SphereGeometry(0.0045, 12, 8), STEEL);
+    paddle.scale.set(1, 0.35, 1.5);
+    g.add(at(paddle, 0, -0.008, -0.168));
+    const putty = new THREE.Mesh(new THREE.SphereGeometry(0.004, 12, 8), mat('#fff3dc', { roughness: 0.8 }));
+    g.add(at(putty, 0, -0.0055, -0.17));
+    return at(new THREE.Object3D(), 0, -0.01, -0.172);
   },
   light(g) {
-    g.add(at(cyl(0.014, 0.016, 0.13, mat(P.pink)), 0, 0, -0.05));
-    g.add(at(cyl(0.0155, 0.0155, 0.02, mat('#ffffff')), 0, 0, -0.1));
-    const guide = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.06, 12), mat('#ffb36b', { transparent: true, opacity: 0.8, emissive: '#ff9a3c', emissiveIntensity: 0.3 }));
-    guide.rotation.x = Math.PI / 2 + 0.6;
-    g.add(at(guide, 0, -0.016, -0.13));
-    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.008, 12, 8), mat('#8fd0ff', { emissive: '#4aa8ff', emissiveIntensity: 1.2 }));
-    g.add(at(glow, 0, -0.034, -0.153));
-    return at(new THREE.Object3D(), 0, -0.036, -0.156);
+    // curing light: a white pen-shaped body, a curved light guide pointing down,
+    // the orange eye-protection shield, and a glowing blue tip
+    g.add(lathe([[0, 0], [0.008, 0.002], [0.0125, 0.02], [0.013, 0.09], [0.011, 0.115], [0.0075, 0.125], [0.0075, 0.13]], WHITE));
+    g.add(at(cyl(0.0133, 0.0133, 0.012, mat(P.pink), 20), 0, 0, -0.06));
+    const button = new THREE.Mesh(new THREE.SphereGeometry(0.0045, 12, 8), mat(P.pinkDeep));
+    button.scale.set(1, 0.6, 1.4);
+    g.add(at(button, 0, 0.012, -0.045));
+    const display = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.002, 0.018), mat('#2e3b36', { emissive: '#4aa8ff', emissiveIntensity: 0.6 }));
+    g.add(at(display, 0, 0.0125, -0.08));
+    const guideMat = mat('#30383d', { metalness: 0.4, roughness: 0.25 });
+    g.add(rod([[0, 0, -0.128], [0, 0, -0.15], [0, -0.008, -0.168], [0, -0.024, -0.176]], 0.0042, guideMat));
+    const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.0015, 24), mat('#ff9a3c', { transparent: true, opacity: 0.55, roughness: 0.1, emissive: '#ff7a1a', emissiveIntensity: 0.2 }));
+    shield.rotation.x = Math.PI / 2;
+    g.add(at(shield, 0, 0, -0.142));
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.0046, 12, 8), mat('#8fd0ff', { emissive: '#4aa8ff', emissiveIntensity: 1.4 }));
+    glow.scale.y = 0.5;
+    g.add(at(glow, 0, -0.028, -0.177));
+    return at(new THREE.Object3D(), 0, -0.031, -0.177);
   },
-};
-
-Object.assign(BUILD, {
+  syringe(g) {
+    // dental aspirating syringe: thumb ring, plunger, steel barrel frame with the cartridge, needle
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0028, 8, 20), STEEL);
+    ring.rotation.y = Math.PI / 2;
+    g.add(at(ring, 0, 0, 0.012));
+    g.add(at(cyl(0.0022, 0.0022, 0.04, STEEL), 0, 0, -0.018));
+    for (const s of [-1, 1]) {
+      const fg = new THREE.Mesh(new THREE.TorusGeometry(0.007, 0.0022, 8, 16), STEEL);
+      fg.rotation.y = Math.PI / 2;
+      g.add(at(fg, s * 0.014, 0, -0.04));
+    }
+    g.add(at(cyl(0.0085, 0.0085, 0.006, STEEL, 18), 0, 0, -0.042));
+    for (const a of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) g.add(at(cyl(0.0014, 0.0014, 0.06, STEEL, 8), Math.cos(a) * 0.0075, Math.sin(a) * 0.0075, -0.074));
+    g.add(at(cyl(0.0062, 0.0062, 0.055, mat('#ffffff', { transparent: true, opacity: 0.45, roughness: 0.05 }), 16), 0, 0, -0.074));
+    g.add(at(cyl(0.0055, 0.0055, 0.02, mat(P.pink, { emissive: '#f48aa8', emissiveIntensity: 0.15 }), 16), 0, 0, -0.08));
+    g.add(at(cyl(0.0085, 0.0085, 0.006, STEEL, 18), 0, 0, -0.106));
+    g.add(at(cyl(0.0045, 0.002, 0.01, mat(P.mint), 12), 0, 0, -0.114));
+    g.add(at(cyl(0.0006, 0.0005, 0.04, STEEL, 6), 0, 0, -0.139));
+    return at(new THREE.Object3D(), 0, 0, -0.159);
+  },
+  forceps(g) {
+    // extraction forceps: mint grips, hinge, curved beaks pointing down
+    pliers(g, {
+      grip: P.mint,
+      gripLen: 0.11,
+      beak: (s) => g.add(rod([[s * 0.004, 0, -0.11], [s * 0.005, -0.004, -0.13], [s * 0.003, -0.016, -0.145], [s * 0.0015, -0.028, -0.148]], 0.0028, STEEL, 0.0016)),
+    });
+    return at(new THREE.Object3D(), 0, -0.03, -0.148);
+  },
+  gauze(g) {
+    // cotton pliers holding a rolled gauze pad
+    pliers(g, {
+      gripLen: 0.03,
+      spread: 0.006,
+      beak: (s) => g.add(rod([[s * 0.006, 0, -0.03], [s * 0.004, 0, -0.1], [s * 0.0015, -0.006, -0.14]], 0.0018, STEEL, 0.001)),
+    });
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0055, 0.022, 12), mat('#ffffff', { roughness: 1 }));
+    pad.rotation.z = Math.PI / 2;
+    g.add(at(pad, 0, -0.009, -0.145));
+    return at(new THREE.Object3D(), 0, -0.012, -0.146);
+  },
   gel(g) {
-    g.add(handle('#a8d8f0'));
-    g.add(at(cyl(0.003, 0.003, 0.04, METAL), 0, 0, -0.14));
-    const brush = new THREE.Mesh(new THREE.SphereGeometry(0.007, 10, 8), mat('#ffffff', { roughness: 0.9 }));
-    brush.scale.set(1, 1, 1.5);
-    g.add(at(brush, 0, 0, -0.165));
-    const gel = new THREE.Mesh(new THREE.SphereGeometry(0.006, 10, 8), mat('#bfe8ff', { transparent: true, opacity: 0.85, roughness: 0.1, emissive: '#7fd0ff', emissiveIntensity: 0.25 }));
-    return g.add(at(gel, 0, 0.004, -0.17)), at(new THREE.Object3D(), 0, 0.002, -0.172);
+    // micro-brush applicator: thin coloured stick, bent tip, fuzzy brush loaded with gel
+    g.add(lathe([[0, 0], [0.004, 0.002], [0.0045, 0.06], [0.0025, 0.1], [0.0018, 0.13]], mat('#a8d8f0', { roughness: 0.4 })));
+    g.add(rod([[0, 0, -0.128], [0, 0, -0.15], [0, -0.006, -0.162]], 0.0015, mat('#a8d8f0', { roughness: 0.4 })));
+    const brush = new THREE.Mesh(new THREE.SphereGeometry(0.0032, 10, 8), mat('#ffffff', { roughness: 1 }));
+    g.add(at(brush, 0, -0.009, -0.165));
+    const gel = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 10, 8), mat('#bfe8ff', { transparent: true, opacity: 0.85, roughness: 0.1, emissive: '#7fd0ff', emissiveIntensity: 0.3 }));
+    g.add(at(gel, 0, -0.0115, -0.166));
+    return at(new THREE.Object3D(), 0, -0.012, -0.166);
   },
   bracket(g) {
-    // tweezers holding a tiny metal bracket
-    for (const s of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.004, 0.15), mat(P.pinkDeep));
-      arm.rotation.y = s * 0.05;
-      g.add(at(arm, s * 0.005, 0, -0.07));
-    }
-    const br = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.008, 0.004), METAL);
-    return g.add(at(br, 0, 0, -0.148)), at(new THREE.Object3D(), 0, 0, -0.15);
+    // bracket tweezers holding one bracket
+    pliers(g, {
+      gripLen: 0.02,
+      spread: 0.006,
+      beak: (s) => g.add(rod([[s * 0.006, 0, -0.02], [s * 0.005, 0, -0.1], [s * 0.0016, -0.004, -0.14]], 0.0018, STEEL, 0.001)),
+    });
+    for (const s of [-1, 1]) g.add(at(rod([[s * 0.0068, 0, -0.035], [s * 0.0062, 0, -0.08]], 0.0026, RUBBER(P.pinkDeep)), 0, 0, 0));
+    const br = new THREE.Group();
+    br.add(new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.002, 0.006), STEEL));
+    for (const s of [-1, 1]) br.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.0015, 0.0025, 0.007), STEEL), s * 0.002, -0.0018, 0));
+    g.add(at(br, 0, -0.006, -0.143));
+    return at(new THREE.Object3D(), 0, -0.008, -0.144);
   },
   wire(g) {
-    // pliers holding an arch wire
-    const grip = mat(P.mintDeep);
-    for (const s of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.007, 0.11), grip);
-      arm.rotation.y = s * 0.12;
-      g.add(at(arm, s * 0.01, 0, -0.03));
-    }
-    g.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.008, 10, 8), METAL), 0, 0, -0.09));
-    g.add(at(cyl(0.004, 0.002, 0.03, METAL), 0, 0, -0.11));
-    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.0012, 6, 24, Math.PI), METAL);
+    // pliers holding the arch wire
+    pliers(g, {
+      grip: P.mintDeep,
+      gripLen: 0.1,
+      beak: (s) => g.add(rod([[s * 0.004, 0, -0.1], [s * 0.003, 0, -0.12], [s * 0.0012, -0.003, -0.135]], 0.0026, STEEL, 0.0012)),
+    });
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.0009, 6, 28, Math.PI), STEEL);
     arch.rotation.x = Math.PI / 2;
-    return g.add(at(arch, 0, 0, -0.125)), at(new THREE.Object3D(), 0, 0, -0.14);
+    g.add(at(arch, 0, -0.004, -0.137));
+    return at(new THREE.Object3D(), 0, -0.004, -0.15);
   },
   file(g) {
-    // endodontic file: small handle, rubber stop, thin twisted needle
-    g.add(at(cyl(0.008, 0.008, 0.04, mat('#ffd36b')), 0, 0, -0.02));
-    g.add(at(cyl(0.004, 0.004, 0.08, mat('#ffd36b')), 0, 0, -0.06));
-    g.add(at(cyl(0.006, 0.006, 0.004, mat(P.pinkDeep)), 0, 0, -0.105));
-    const needle = cyl(0.0012, 0.0004, 0.06, METAL, 6);
-    return g.add(at(needle, 0, 0, -0.135)), at(new THREE.Object3D(), 0, 0, -0.165);
+    // endodontic file: ridged yellow handle, pink rubber stop, fine twisted steel needle
+    const yellow = mat('#ffd36b', { roughness: 0.5 });
+    g.add(lathe([[0, 0], [0.006, 0.002], [0.0072, 0.01], [0.0072, 0.03], [0.0042, 0.04], [0.0035, 0.085], [0.0025, 0.095]], yellow));
+    for (let i = 0; i < 4; i++) g.add(at(cyl(0.0076, 0.0076, 0.0015, mat('#f2c14e'), 14), 0, 0, -0.012 - i * 0.005));
+    g.add(at(cyl(0.004, 0.004, 0.0025, RUBBER(P.pinkDeep), 14), 0, 0, -0.105));
+    const needle = new THREE.Mesh(new THREE.ConeGeometry(0.0009, 0.05, 6, 6), STEEL);
+    needle.rotation.x = -Math.PI / 2;
+    g.add(at(needle, 0, 0, -0.12));
+    return at(new THREE.Object3D(), 0, 0, -0.145);
   },
-});
+};
 
 export function buildTool(id) {
   const group = new THREE.Group();

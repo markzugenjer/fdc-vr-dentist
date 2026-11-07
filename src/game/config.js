@@ -16,9 +16,26 @@ export const DEFAULTS = {
   nurseHelp: true, // Suster Nana hands over the right tool when you hesitate
   hints: 3, // "Petunjuk" presses per round: shows which tool is right (0 = no hint button)
   voices: true, // gibberish character voices
+  wheel: true, // Roda Hadiah: a prize wheel after every Mulai kerja / Mode Event round
   cases: { scaling: true, extraction: true, filling: true, whitening: true, braces: true, rootcanal: true, checkup: true },
   types: { scared: true, chatty: true, vip: true, kid: true },
 };
+
+/**
+ * Roda Hadiah prizes (text only for now). `weight` is how likely each one is compared to the
+ * others: weight 4 comes up twice as often as weight 2. 4 to 12 prizes look best on the wheel.
+ * These are examples: change them to the real booth prizes.
+ */
+export const PRIZES = [
+  { text: 'Sikat gigi FDC', weight: 4 },
+  { text: 'Stiker FDC', weight: 5 },
+  { text: 'Diskon scaling 20%', weight: 2 },
+  { text: 'Pasta gigi', weight: 3 },
+  { text: 'Gantungan kunci', weight: 4 },
+  { text: 'Cek gigi gratis', weight: 1 },
+  { text: 'Voucher Rp50.000', weight: 1 },
+  { text: 'Permen xylitol', weight: 4 },
+];
 
 /** The choices each setting cycles through in the game. */
 export const CHOICES = {

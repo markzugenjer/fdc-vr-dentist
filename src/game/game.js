@@ -9,7 +9,9 @@ import { Music } from './music.js';
 import { buildBoards } from './boards.js';
 import { progress } from './progress.js';
 import { Decor, DECOR, DECOR_ORDER } from './decor.js';
-import { config, CHOICES } from './config.js';
+import { config, CHOICES, PRIZES } from './config.js';
+import { PrizeWheel } from './wheel.js';
+import { store } from '../core/util.js';
 import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, FACTS, PERSONALITIES, TOOL_HINT, PAIRS, pick } from './cases.js';
 import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from '../core/ui.js';
 
@@ -220,6 +222,7 @@ export function createClinic(app) {
     ['funny', () => `Momen lucu: ${config.funny ? 'Nyala' : 'Mati'}`],
     ['nurseHelp', () => `Bantuan Suster Nana: ${config.nurseHelp ? 'Nyala' : 'Mati'}`],
     ['voices', () => `Suara pasien: ${config.voices ? 'Nyala' : 'Mati'}`],
+    ['wheel', () => `Roda hadiah: ${config.wheel ? 'Nyala' : 'Mati'}`],
   ];
   const setBtns = [];
   const addSetBtn = (label, tone, x, y, w, onSelect) => {
@@ -318,6 +321,54 @@ export function createClinic(app) {
   const bMenu = btn('Menu', 'light', 0, ROW1, () => toTitle(), 0.4);
   const bLobby2 = btn('Lobby FDC', 'pink', 0.43, ROW1, () => toLobby(), 0.4);
 
+  // ------------------------------------------------------------------ Roda Hadiah (prize wheel)
+  // After a Mulai kerja / Mode Event round the final board offers one spin; the wheel takes the
+  // board's place, and the prize is then shown on the final board for the staff to see.
+  const wheel = new PrizeWheel(app, { sfx, fx, position: new THREE.Vector3(0, 1.52, -1.15) });
+  group.add(wheel.group);
+  let wheelReady = false; // this round may spin
+  let wheelOpen = false;
+  const bSpin = btn('Putar Roda Hadiah!', 'pink', 0, ROW1, () => openWheel(), 0.62);
+  const bWheelGo = makeButton(app, { label: 'PUTAR!', tone: 'pink', w: 0.42, h: 0.13, onSelect: () => wheelButton() });
+  bWheelGo.position.set(0.66, 1.2, -1.08); // right of the wheel, clear of the spittoon and the lamp
+  bWheelGo.rotation.y = -0.3;
+  group.add(bWheelGo);
+  wheel.onResult = (prize) => {
+    bigContent.prize = prize.text;
+    big.redraw();
+    bWheelGo.userData.setLabel('Lanjut');
+    assistant.act('clap', 2);
+    assistant.face('happy');
+    assistant.say(`Selamat! Kamu dapat ${prize.text}!`, 3);
+    try {
+      const log = store.get('fdc.dentist.prizes', {});
+      log[prize.text] = (log[prize.text] || 0) + 1;
+      store.set('fdc.dentist.prizes', log);
+    } catch { /* storage full or blocked: the prize still shows */ }
+  };
+  function openWheel() {
+    if (state !== 'final' || !wheelReady || bigContent.prize) return;
+    wheel.setPrizes(PRIZES);
+    wheel.open();
+    wheelOpen = true;
+    bWheelGo.userData.setLabel('PUTAR!');
+    sfx.play('sparkle');
+    assistant.act('point', 1.6);
+    assistant.say('Waktunya Roda Hadiah! Tekan PUTAR!', 2.6);
+    layout();
+  }
+  function wheelButton() {
+    if (wheel.spinning) return;
+    if (!wheel.spun) { wheel.start(); bWheelGo.visible = false; return; }
+    closeWheel();
+  }
+  function closeWheel() {
+    wheel.close();
+    wheelOpen = false;
+    sfx.play('click');
+    layout();
+  }
+
   // patient card on the right
   const cardPanel = makePanel(0.62, 0.74, (c, W, H) => drawCard(c, W, H));
   cardPanel.mesh.position.set(0.98, 1.52, -1.3);
@@ -397,15 +448,18 @@ export function createClinic(app) {
     const f = state === 'final';
     const shop = t && bigContent.kind === 'shop';
     const sets = t && bigContent.kind === 'settings';
-    big.mesh.visible = (t || r || f) && !sets;
+    big.mesh.visible = (t || r || f) && !sets && !wheelOpen;
     setPanel.mesh.visible = sets;
     show(setBtns, sets);
     show([bStart, bEvent, bTut, bHow, bDecor, bSettings], t && !shop && !sets);
     show([...shopBtns, bShopBack], shop);
     bLobby.visible = t && !shop && !sets && FROM_LOBBY;
     bNext.visible = r;
-    show([bAgain, bMenu], f);
-    bLobby2.visible = f && FROM_LOBBY;
+    const spinFirst = f && wheelReady && !bigContent.prize;
+    bSpin.visible = spinFirst && !wheelOpen;
+    bWheelGo.visible = f && wheelOpen && !wheel.spinning;
+    show([bAgain, bMenu], f && !spinFirst && !wheelOpen);
+    bLobby2.visible = f && !spinFirst && !wheelOpen && FROM_LOBBY;
     cardPanel.mesh.visible = !t && !f;
     show([pausePanel.mesh, pResume, pMenu, pMusic], paused);
     pLobby.visible = paused && FROM_LOBBY;
@@ -509,6 +563,14 @@ export function createClinic(app) {
         text(c, `Hadiah baru: ${d.unlocked.map((u) => u.name).join(', ')}!`, W / 2, H * 0.695, { size: H * 0.045, weight: 800, align: 'center', color: P.pinkDeep, maxWidth: W - pad * 2.6 });
       } else if (d.rankUp) {
         text(c, `Naik peringkat: ${d.rankUp}!`, W / 2, H * 0.69, { size: H * 0.055, weight: 800, align: 'center', color: P.pinkDeep });
+      }
+      if (d.prize) {
+        roundRect(c, pad, H * 0.79, W - pad * 2, H * 0.14, H * 0.05);
+        c.fillStyle = P.gold; c.fill();
+        text(c, `Hadiah Roda: ${d.prize}`, W / 2, H * 0.845, { size: H * 0.055, weight: 900, align: 'center', color: P.ink, maxWidth: W - pad * 2.6 });
+        text(c, 'Tunjukkan ke petugas FDC', W / 2, H * 0.905, { size: H * 0.03, weight: 700, align: 'center', color: P.ink });
+      } else if (wheelReady) {
+        text(c, 'Kamu dapat 1x putar Roda Hadiah!', W / 2, H * 0.86, { size: H * 0.055, weight: 900, align: 'center', color: P.pinkDeep });
       }
     }
   }
@@ -1435,7 +1497,8 @@ export function createClinic(app) {
       if (patient) { const pt = patient; patient = null; disposeJobs(); room.chair.want = 0; guard(walkOut(pt.ch, false)); }
     }
     for (const w of [...waiting]) { waiting.splice(waiting.indexOf(w), 1); group.remove(w.bar); w.state = 'leaving'; walkers.add(w.ch); guard((async () => { await w.ch.standUp(w.seat.front); doorOpen(); await w.ch.walkTo([{ x: 1.7, z: -2.5 }, DOOR_IN, DOOR_OUT], { speed: 1.1 }); doorClose(); removeCharacter(w.ch); })()); }
-    bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : config.patientsPerShift };
+    bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : config.patientsPerShift, prize: null };
+    wheelReady = mode !== 'tutorial' && config.wheel && PRIZES.length > 0;
     big.redraw();
     layout();
     starPop = 1;
@@ -1473,6 +1536,8 @@ export function createClinic(app) {
 
   function start(m) {
     resetAll();
+    if (wheelOpen) { wheel.close(); wheelOpen = false; }
+    wheelReady = false;
     mode = m;
     shift = { score: 0, stars: 0, happy: 0, lost: 0, results: [] };
     served = 0;
@@ -1497,6 +1562,7 @@ export function createClinic(app) {
 
   function toTitle() {
     resetAll();
+    if (wheelOpen) { wheel.close(); wheelOpen = false; }
     mode = null;
     state = 'title';
     bigContent = { kind: 'title' };
@@ -1522,6 +1588,8 @@ export function createClinic(app) {
     tickButtons(group, dt);
     // empty chair on a menu: fold the backrest down so it doesn't cover the board and buttons
     room.chair.flat = !patient && (state === 'title' || state === 'result' || state === 'final') ? 1 : 0;
+    wheel.update(paused ? 0 : dt);
+    if (wheelOpen && wheel.spun && !wheel.spinning && !bWheelGo.visible) bWheelGo.visible = true;
     bHint.visible = !paused && hintsLeft > 0 && !!patient && (state === 'treat' || state === 'react') && !!curStep(firstOpen());
     room.update(paused ? 0 : dt);
     fx.update(dt);
@@ -1714,6 +1782,7 @@ export function createClinic(app) {
     get combo() { return combo; },
     tray, start, nextPatient, toTitle, boards, assistant,
     startShift: () => start('shift'),
+    wheel, openWheel, wheelButton, finish,
     hint: () => useHint(),
     get hintsLeft() { return hintsLeft; },
     get hintVisible() { return bHint.visible; },

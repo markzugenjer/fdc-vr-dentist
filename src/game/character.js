@@ -420,6 +420,8 @@ export class Character {
   }
 
   standUp(to) {
+    // not sitting (still walking in, e.g. when Mode Event ends): nothing to stand up from
+    if (!this.seat || (this.sitDir === 0 && this.sitAmt <= 0)) { this.sitDir = 0; this.onSat?.(); this.onSat = null; return Promise.resolve(); }
     this.standTo = to;
     this.sitT = 0;
     this.sitDir = -1;

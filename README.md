@@ -47,16 +47,33 @@ Title screen → **Pengaturan**. Everything is saved on the headset.
 
 | Setting | Choices (default first) |
 | --- | --- |
-| Pasien per shift | 5, 7, 10, 3 |
+| Pasien per shift | 5, 7, 10, 2, 3 |
 | Mode Event | 3, 5, 1, 2 minutes |
 | Kesabaran pasien | Normal, Cepat bosan, Santai |
 | Salah alat maksimal | 3, 5, 2 (scared patients get one less) |
 | Pasien 2 masalah | Kadang, Sering, Tidak ada |
-| Momen lucu, Bantuan Suster Nana, Suara pasien | on / off |
+| Petunjuk alat | 3, 5, 10, Mati, 1 per round |
+| Momen lucu, Bantuan Suster Nana, Suara pasien, Roda hadiah | on / off |
 | Perawatan yang muncul | tick the treatments you want (at least one) |
 | Tipe pasien | tick Penakut, Cerewet, VIP, Anak-anak (normal patients always come) |
 
 **Kembali ke awal** restores the defaults. To change the defaults for every headset (for an event, say), edit `DEFAULTS` in `src/game/config.js` and push.
+
+## Roda Hadiah (prize wheel)
+
+After a Mulai kerja or Mode Event round, the final board offers **Putar Roda Hadiah!** (once per round). The wheel takes the board's place: press **PUTAR!** (or point at the wheel and pull the trigger), it spins for about 5 seconds and stops on a prize with confetti and a fanfare. **Lanjut** goes back to the final board, which keeps showing the prize for the FDC staff.
+
+The prizes are text only for now. Edit `PRIZES` in `src/game/config.js` and push:
+
+```js
+export const PRIZES = [
+  { text: 'Sikat gigi FDC', weight: 4 }, // weight 4 comes up twice as often as weight 2
+  { text: 'Cek gigi gratis', weight: 1 },
+  ...
+];
+```
+
+4 to 12 prizes look best. Turn the wheel off in Pengaturan → Roda hadiah. Each headset also counts the prizes it has given out (localStorage key `fdc.dentist.prizes`).
 
 ## Dekorasi
 
@@ -155,7 +172,8 @@ src/game/music.js  cheerful background music, synthesized live (F major, 116 BPM
 src/game/boards.js X-ray screen, score TV, rank sign, FDC sign, unlockable decorations
 src/game/progress.js  stars, ranks, unlocks and the score board (saved on the headset)
 src/game/decor.js  Dekorasi: wall colours, posters, plants, uniform and chair colours
-src/game/config.js settings and their defaults (patients per shift, treatments, patient types...)
+src/game/config.js settings and their defaults (patients per shift, treatments, patient types...) and the wheel prizes
+src/game/wheel.js  Roda Hadiah, the prize wheel after a round
 ```
 
 ## Add a treatment

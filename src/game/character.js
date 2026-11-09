@@ -27,6 +27,7 @@ const lerp = (a, b, k) => a + (b - a) * k;
 /** Body proportions: hips at 0.62 m, about 1.5 m tall at height 1 (adults use height ~1.1). */
 export const HIP_Y = 0.62;
 const HEAD_SCALE = 0.74;
+export const SIT_ARM = { sx: -0.12, sy: -0.98, sz: 0.1, ex: -1.06 };
 
 const FACES = {
   //        eye   brow  browY  sad   mouth     open  blush red  pupilY
@@ -666,7 +667,9 @@ export class Character {
       let sz = 0.12 * side;
       let ez = 0;
       let ex = -0.18 - Math.abs(swing) * 0.2;
-      if (s > 0.01) { sx = lerp(sx, -0.25, s); ex = lerp(ex, -0.9, s); sz = lerp(sz, 0.18 * side, s); }
+      let sy = 0;
+      // seated: hands resting on the tummy/lap (the dental chair has no armrests)
+      if (s > 0.01) { sx = lerp(sx, SIT_ARM.sx, s); ex = lerp(ex, SIT_ARM.ex, s); sz = lerp(sz, SIT_ARM.sz * side, s); sy = lerp(0, SIT_ARM.sy * side, s); }
       const a = this.action;
       if (a) {
         const k = Math.min(1, this.actionT / 0.2, (this.actionDur - this.actionT) / 0.25);
@@ -690,9 +693,9 @@ export class Character {
         if (a === 'give' && right) { ax = -1.45; az = 0.25; aex = -0.25; } // holding something out
         if (a === 'shiver') { ax = -1.0 + Math.sin(t * 40 + i) * 0.08; az = -0.3 * side; aex = -1.6; } // arms hugging
         if (a === 'calm' && right) { ax = -1.1; az = -0.2; aex = -0.5; aez = Math.sin(t * 6) * 0.3; } // gentle pat
-        sx = lerp(sx, ax, k); sz = lerp(sz, az, k); ex = lerp(ex, aex, k); ez = lerp(ez, aez, k);
+        sx = lerp(sx, ax, k); sz = lerp(sz, az, k); ex = lerp(ex, aex, k); ez = lerp(ez, aez, k); sy = lerp(sy, 0, k);
       }
-      set(`sx${i}`, sx); set(`sz${i}`, sz); set(`ex${i}`, ex); set(`ez${i}`, ez);
+      set(`sx${i}`, sx); set(`sy${i}`, sy); set(`sz${i}`, sz); set(`ex${i}`, ex); set(`ez${i}`, ez);
     }
     if (this.action) {
       this.actionT += dt;
@@ -705,7 +708,7 @@ export class Character {
     for (const key in J) S[key] = S[key] === undefined ? J[key] : lerp(S[key], J[key], k);
     this.legs.forEach((leg, i) => { leg.thigh.rotation.x = S[`th${i}`]; leg.shin.rotation.x = S[`sh${i}`]; });
     this.arms.forEach((arm, i) => {
-      arm.shoulder.rotation.set(S[`sx${i}`], 0, S[`sz${i}`]);
+      arm.shoulder.rotation.set(S[`sx${i}`], S[`sy${i}`], S[`sz${i}`]);
       arm.elbow.rotation.set(S[`ex${i}`], 0, S[`ez${i}`]);
     });
     this.torso.rotation.x = S.torsoX;

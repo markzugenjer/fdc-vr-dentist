@@ -1884,7 +1884,7 @@ export function createClinic(app) {
     get waiting() { return waiting; },
     get shift() { return shift; },
     get combo() { return combo; },
-    tray, start, nextPatient, toTitle, boards, assistant,
+    tray, start, nextPatient, toTitle, boards, assistant, get room() { return room; },
     startShift: () => start('shift'),
     wheel, openWheel, wheelButton, finish,
     hint: () => useHint(),

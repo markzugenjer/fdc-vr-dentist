@@ -648,7 +648,9 @@ export class Character {
       const dir = i === 0 ? 1 : -1;
       const sw = swing * dir * swingSad;
       set(`th${i}`, lerp(sw, -1.45, s));
-      set(`sh${i}`, lerp(Math.max(0, -Math.sin(ph) * dir) * 0.7 * w, 1.15, s));
+      // dental chair (it reclines): legs stretched out along the legrest; benches and chairs: knees bent
+      const legsOut = this.seat?.recline ? 1 : 0;
+      set(`sh${i}`, lerp(Math.max(0, -Math.sin(ph) * dir) * 0.7 * w, lerp(1.15, 0.36, legsOut), s));
       void leg;
     }
     // swinging legs on the bench (kids and bored patients)

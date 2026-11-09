@@ -21,6 +21,7 @@ import { FONT } from '../core/ui.js';
  * into one mesh per material, so it stays light on the Quest.
  */
 export const SAGE = '#a9bd9b';
+export const FDC_ROOM = { ...ROOM, maxZ: 3.0 };
 export const FDC_CHAIR = { pad: '#b9c97c', accent: '#efe7cf' };
 
 const OAK = '#d9b07c';
@@ -57,7 +58,9 @@ export function buildFdcRoom() {
   const group = new THREE.Group();
   const still = new THREE.Group();
   group.add(still);
-  const { minX, maxX, minZ, maxZ, h } = ROOM;
+  // a bit deeper than the cartoon room (the front wall behind the dentist is 1.2 m further back),
+  // so the desk corner has room of its own, well away from the tool tray
+  const { minX, maxX, minZ, maxZ, h } = FDC_ROOM;
   const W = maxX - minX;
   const D = maxZ - minZ;
   const cx = (minX + maxX) / 2;
@@ -89,7 +92,7 @@ export function buildFdcRoom() {
   }
   put(still, new THREE.PlaneGeometry(W, D), m.wall, cx, h, cz, Math.PI / 2);
   // downlights
-  for (const [x, z] of [[-1.2, -1.8], [0.4, -1.8], [-1.2, 0.2], [0.4, 0.2], [1.8, -1.0]]) put(still, new THREE.CylinderGeometry(0.07, 0.07, 0.01, 16), m.down, x, h - 0.004, z);
+  for (const [x, z] of [[-1.2, -1.8], [0.4, -1.8], [-1.2, 0.2], [0.4, 0.2], [1.8, -1.0], [-1.2, 2.0], [1.6, 2.0]]) put(still, new THREE.CylinderGeometry(0.07, 0.07, 0.01, 16), m.down, x, h - 0.004, z);
   // warm LED cove along the top of the back wall (as in the photos)
   put(still, new THREE.BoxGeometry(W, 0.12, 0.22), m.wall, cx, h - 0.06, minZ + 0.11);
   put(still, new THREE.PlaneGeometry(W - 0.05, 0.05), m.cove, cx, h - 0.125, minZ + 0.02);
@@ -232,7 +235,7 @@ export function buildFdcRoom() {
   for (const sx of [-1, 1]) put(lampHead, new THREE.CylinderGeometry(0.012, 0.012, 0.08, 8), m.steel, sx * 0.22, -0.02, 0, 0, 0, Math.PI / 2);
   // the patient's water unit by the head (patient's left): cream column, white bowl, cup tap,
   // and the assistant arm with the suction tips
-  const wu = new THREE.Vector3(0.2, 0, -1.02);
+  const wu = new THREE.Vector3(-0.18, 0, -1.16); // by the patient's head, clear of their hands
   put(still, box(0.2, 0.62, 0.22, 0.06), m.cream, wu.x, 0.38, wu.z);
   put(still, new THREE.CylinderGeometry(0.06, 0.07, 0.12, 14), m.cream, wu.x, 0.72, wu.z);
   put(still, new THREE.CylinderGeometry(0.13, 0.07, 0.09, 24, 1, true), m.white, wu.x, 0.79, wu.z);
@@ -241,8 +244,8 @@ export function buildFdcRoom() {
   rod(still, new THREE.Vector3(wu.x - 0.08, 0.8, wu.z - 0.06), new THREE.Vector3(wu.x - 0.08, 0.95, wu.z - 0.06), 0.008, m.steel);
   rod(still, new THREE.Vector3(wu.x - 0.08, 0.95, wu.z - 0.06), new THREE.Vector3(wu.x - 0.02, 0.93, wu.z - 0.03), 0.007, m.steel);
   put(still, new THREE.CylinderGeometry(0.025, 0.02, 0.06, 10), s('#cfe7f0', { roughness: 0.2, transparent: true, opacity: 0.7 }), wu.x - 0.03, 0.82, wu.z - 0.02);
-  const armEnd = new THREE.Vector3(wu.x + 0.25, 0.8, wu.z + 0.05);
-  rod(still, new THREE.Vector3(wu.x + 0.08, 0.6, wu.z), armEnd, 0.018, m.cream);
+  const armEnd = new THREE.Vector3(wu.x - 0.3, 0.74, wu.z - 0.05); // the assistant arm reaches back, behind the headrest
+  rod(still, new THREE.Vector3(wu.x - 0.08, 0.6, wu.z), armEnd, 0.018, m.cream);
   put(still, box(0.2, 0.05, 0.1, 0.02), m.cream, armEnd.x + 0.06, armEnd.y + 0.02, armEnd.z);
   for (let k = 0; k < 3; k++) {
     rod(still, new THREE.Vector3(armEnd.x + 0.0 + k * 0.05, armEnd.y + 0.04, armEnd.z), new THREE.Vector3(armEnd.x + 0.02 + k * 0.05, armEnd.y + 0.16, armEnd.z + 0.02), 0.009, k === 0 ? m.black : s('#7a8a8f'));
@@ -273,7 +276,7 @@ export function buildFdcRoom() {
   // the doctor's desk in the front-right corner, as in the photos: a 1.4 m oak top on black
   // hairpin legs with a front panel, a big white all-in-one monitor, keyboard, mouse on a black
   // pad, the tooth models; the doctor's tan chair behind it, two black chairs for the patient in front
-  const desk = { x: 1.62, z: 1.0, w: 0.68, l: 1.4, y: 0.76 };
+  const desk = { x: 1.62, z: 2.05, w: 0.68, l: 1.4, y: 0.76 };
   put(still, box(desk.w, 0.035, desk.l, 0.008), m.oak, desk.x, desk.y, desk.z);
   put(still, new THREE.BoxGeometry(desk.w - 0.02, 0.004, desk.l - 0.02), s('#e7c79a', { roughness: 0.35 }), desk.x, desk.y + 0.019, desk.z); // glossy top
   put(still, box(0.02, 0.36, desk.l - 0.08, 0.005), m.oak, desk.x - desk.w / 2 + 0.03, desk.y - 0.2, desk.z); // modesty panel (patient side)
@@ -374,6 +377,7 @@ export function buildFdcRoom() {
     style: 'fdc',
     // where the Dekorasi mirror hangs: a slim black-framed wall mirror between the counter and the big print
     decoMirror: { x: minX + 0.03, y: 1.55, z: -0.5, ry: Math.PI / 2, look: 'rect' },
+    bounds: FDC_ROOM,
     // Dekorasi's first choices map to the real clinic's look
     wallColor: (opt) => (opt.id === 'cream' ? SAGE : opt.color),
     chairColors: (opt) => (opt.id === 'mint' ? FDC_CHAIR : opt),
@@ -658,13 +662,9 @@ function buildFdcChair(m, s) {
   put(group, new THREE.BoxGeometry(0.02, 0.02, 0.38), m.steel, 0.25, 0.37, 0); // chrome trim
   // seat cushion: soft, rounded, a little dished
   put(group, new RoundedBoxGeometry(0.5, 0.1, 0.46, 5, 0.045), pad, 0.02, 0.44, 0);
-  for (const sz of [-1, 1]) put(group, new RoundedBoxGeometry(0.46, 0.06, 0.06, 4, 0.028), pad, 0.02, 0.48, sz * 0.2);
+  for (const sz of [-1, 1]) put(group, new RoundedBoxGeometry(0.46, 0.04, 0.05, 4, 0.02), pad, 0.02, 0.48, sz * 0.205);
   // armrest on the patient's left (away from the dentist)
-  const arm = new THREE.Group();
-  arm.position.set(-0.02, 0.5, -0.27);
-  group.add(arm);
-  put(arm, new RoundedBoxGeometry(0.05, 0.16, 0.05, 3, 0.02), shell, -0.08, 0.04, 0);
-  put(arm, new RoundedBoxGeometry(0.36, 0.05, 0.08, 4, 0.024), shell, 0.04, 0.14, 0);
+  // (no armrests: the cartoon patients' arms rest beside them and would pass through one)
   // backrest on a hinge at the back of the seat
   const back = new THREE.Group();
   back.position.set(-0.15, 0.46, 0);

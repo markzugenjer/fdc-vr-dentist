@@ -144,8 +144,33 @@ export function buildBoards(app, parent) {
   };
   out.decor.apply();
   // Klinik FDC room: its mural already carries the FDC logo, and the counter fills the back-left corner
+  // Klinik FDC: the X-ray screen becomes the chair's monitor on a cream arm (no floor pole)
+  const monitorArm = new THREE.Group();
+  const cream = std('#f1ead8', { roughness: 0.5 });
+  const armRod = (a, b) => {
+    const len = a.distanceTo(b);
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, len, 10), cream);
+    r.position.copy(a).add(b).multiplyScalar(0.5);
+    r.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    monitorArm.add(r);
+  };
+  // from the water unit column (0.2, 0.7, -1.02) up and back to the monitor (in xGroup space)
+  const toLocal = (x, y, z) => xGroup.worldToLocal(new THREE.Vector3(x, y, z));
+  xGroup.updateMatrixWorld(true);
+  const p0 = toLocal(-0.2, 0.72, -1.26);
+  const p1 = toLocal(-0.3, 1.05, -1.4);
+  const p2 = new THREE.Vector3(0, -0.12, -0.05);
+  armRod(p0, p1);
+  armRod(p1, p2);
+  const knuckle = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 10), cream);
+  knuckle.position.copy(p1);
+  monitorArm.add(knuckle);
+  monitorArm.visible = false;
+  xGroup.add(monitorArm);
   out.setRoomStyle = (style) => {
     const fdc = style !== 'kartun';
+    pole.visible = base.visible = !fdc;
+    monitorArm.visible = fdc;
     sign.mesh.visible = !fdc;
     balloons.position.set(fdc ? -1.45 : -2.05, 0, fdc ? -2.75 : -2.4);
     trophy.position.set(fdc ? -2.0 : -1.05, 1.77, ROOM.minZ + 0.12); // on the black shelf left of the mural logo

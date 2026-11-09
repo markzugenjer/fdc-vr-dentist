@@ -31,7 +31,7 @@ const HEAD_SCALE = 0.74;
 const FACES = {
   //        eye   brow  browY  sad   mouth     open  blush red  pupilY
   neutral: { eye: 1, brow: 0, browY: 0, sad: 0, mouth: 'smile', open: 0, blush: 0.4, red: 0, py: 0 },
-  happy: { eye: 0.35, brow: -0.15, browY: 0.012, sad: 0, mouth: 'grin', open: 0.42, blush: 1, red: 0, py: 0 },
+  happy: { eye: 0.35, brow: -0.15, browY: 0.012, sad: 0, mouth: 'grin', open: 0.34, blush: 1, red: 0, py: 0 },
   smiley: { eye: 0.8, brow: -0.1, browY: 0.008, sad: 0, mouth: 'smile', open: 0, blush: 0.8, red: 0, py: 0 },
   talk: { eye: 1, brow: -0.05, browY: 0.006, sad: 0, mouth: 'talk', open: 0.3, blush: 0.5, red: 0, py: 0 },
   aaa: { eye: 1, brow: -0.1, browY: 0.012, sad: 0.2, mouth: 'open', open: 1, blush: 0.4, red: 0, py: 0.004 },
@@ -157,22 +157,26 @@ export class Character {
     // eyes: white, pupil, shine; an "X" version for pain
     this.eyes = [-1, 1].map((s) => {
       const g = new THREE.Group();
-      g.position.set(0.085 * s, 0.035, 0.2);
-      g.rotation.y = 0.32 * s;
+      g.position.set(0.084 * s, 0.0, 0.204);
+      g.rotation.y = 0.34 * s;
       this.head.add(g);
       const w = new THREE.Mesh(ball(), white);
-      w.scale.set(0.036, 0.04, 0.02);
+      w.scale.set(0.04, 0.046, 0.02);
       g.add(w);
       const pupil = new THREE.Group();
       g.add(pupil);
       const pm = new THREE.Mesh(ball(), std(o.eyes, { roughness: 0.3 }));
-      pm.scale.set(0.021, 0.024, 0.011);
-      pm.position.z = 0.014;
+      pm.scale.set(0.03, 0.036, 0.012);
+      pm.position.z = 0.012;
       pupil.add(pm);
       const shine = new THREE.Mesh(ball(8), white);
-      shine.scale.setScalar(0.007);
-      shine.position.set(0.009, 0.013, 0.026);
+      shine.scale.setScalar(0.0105);
+      shine.position.set(0.011, 0.014, 0.024);
       pupil.add(shine);
+      const shine2 = new THREE.Mesh(ball(8), white);
+      shine2.scale.setScalar(0.005);
+      shine2.position.set(-0.009, -0.012, 0.024);
+      pupil.add(shine2);
       const x = new THREE.Group();
       for (const r of [0.78, -0.78]) {
         const bar = new THREE.Mesh(capsule(0.007, 0.05), dark);
@@ -185,24 +189,23 @@ export class Character {
       return { g, w, pupil, x, side: s };
     });
     this.brows = [-1, 1].map((s) => {
-      const b = new THREE.Mesh(capsule(0.009, 0.045), hairMat);
+      const b = new THREE.Mesh(capsule(0.008, 0.04), hairMat);
       b.rotation.z = Math.PI / 2;
-      b.position.set(0.085 * s, 0.112, 0.193);
+      b.position.set(0.084 * s, 0.075, 0.2);
       this.head.add(b);
       return { b, side: s };
     });
     this.cheekMat = std('#f49aae', { transparent: true, opacity: 0.5, roughness: 1 });
     for (const s of [-1, 1]) {
       const ch = new THREE.Mesh(ball(12), this.cheekMat);
-      ch.scale.set(0.035, 0.022, 0.01);
-      ch.position.set(0.13 * s, -0.035, 0.18);
+      ch.scale.set(0.034, 0.02, 0.01);
+      ch.position.set(0.128 * s, -0.06, 0.18);
       ch.rotation.y = 0.6 * s;
       this.head.add(ch);
     }
     const nose = new THREE.Mesh(ball(12), this.skinMat);
-    nose.scale.set(0.026, 0.04, 0.03);
-    nose.position.set(0, -0.005, 0.228);
-    nose.rotation.x = 0.25;
+    nose.scale.set(0.02, 0.017, 0.016);
+    nose.position.set(0, -0.045, 0.222);
     this.head.add(nose);
 
     this.buildMouth();
@@ -252,9 +255,19 @@ export class Character {
       cached('hairCap', () => new THREE.SphereGeometry(0.25, 28, 16, 0, Math.PI * 2, 0, Math.PI * 0.46)),
       mat,
     );
-    cap.rotation.x = -0.32;
+    cap.rotation.x = -0.2;
     cap.position.set(0, 0.012, -0.012);
     this.head.add(cap);
+    if (style !== 'spiky' && style !== 'curly') {
+      // soft fringe over the forehead, so the face reads friendly instead of bald and staring
+      for (const [x, ry, sc] of [[-0.075, -0.45, 1], [0.075, 0.45, 1], [0, 0, 0.9]]) {
+        const f = new THREE.Mesh(ball(16), mat);
+        f.scale.set(0.1 * sc, 0.055, 0.06);
+        f.position.set(x, 0.145, 0.165 - Math.abs(x) * 0.25);
+        f.rotation.set(-0.55, ry, x * -3);
+        this.head.add(f);
+      }
+    }
     if (style === 'long' || style === 'bob') {
       const back = new THREE.Mesh(ball(), mat);
       back.scale.set(0.25, style === 'long' ? 0.27 : 0.2, 0.17);
@@ -360,7 +373,7 @@ export class Character {
     this.lips.scale.set(W, H, 0.09); // flat ring (the torus is 1 m wide before scaling)
     this.tongue.scale.set(W * 0.62, H * 0.38, 0.012);
     this.tongue.position.y = -H * 0.5;
-    const show = open > 0.18;
+    const show = open > 0.5; // teeth only when the mouth is open wide for treatment
     for (const row of ['upper', 'lower']) {
       const sign = row === 'upper' ? 1 : -1;
       this.teeth[row].forEach((t, i) => {
@@ -573,7 +586,7 @@ export class Character {
     for (const b of this.brows) {
       // positive "brow" = angry (inner end down); "sad" lifts the inner end
       b.b.rotation.z = Math.PI / 2 + b.side * (c.brow - c.sad * 0.45);
-      b.b.position.y = 0.112 + c.browY + c.sad * 0.006;
+      b.b.position.y = 0.075 + c.browY + c.sad * 0.006;
     }
     this.cheekMat.opacity = 0.15 + c.blush * 0.55;
     this.skinMat.color.copy(this.skinBase).lerp(RED, c.red * 0.35);

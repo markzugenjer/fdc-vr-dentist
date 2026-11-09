@@ -10,7 +10,7 @@ import { Music } from './music.js';
 import { buildBoards } from './boards.js';
 import { progress } from './progress.js';
 import { Decor, DECOR, DECOR_ORDER } from './decor.js';
-import { config, CHOICES, PRIZES } from './config.js';
+import { config, CHOICES } from './config.js';
 import { PrizeWheel } from './wheel.js';
 import { store } from '../core/util.js';
 import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, FACTS, PERSONALITIES, TOOL_HINT, PAIRS, pick } from './cases.js';
@@ -253,7 +253,7 @@ export function createClinic(app) {
   const typeIds = Object.keys(TYPE_NAMES);
   const typeLabel = (id) => `${config.types[id] ? '✓' : '✗'}  ${TYPE_NAMES[id]}`;
   const typeBtns = typeIds.map((id, i) => addSetBtn(typeLabel(id), 'light', 0.37, SET_TYPES_Y - i * 0.068, 0.64, () => { config.toggle('types', id); sfx.play('click'); refreshSettings(); }));
-  addSetBtn('Kembali ke awal', 'pink', -0.36, SET_TOP - SETTINGS.length * ROW_GAP - 0.03, 0.66, () => { config.reset(); sfx.play('drop'); setRoomStyle(config.roomStyle); refreshSettings(); });
+  addSetBtn('Kembali ke awal', 'light', -0.55, SET_TOP - SETTINGS.length * ROW_GAP - 0.03, 0.34, () => { config.reset(); sfx.play('drop'); setRoomStyle(config.roomStyle); refreshSettings(); });
 
   /** Swap the treatment room in place (the game keeps going; chair, door and clock carry over). */
   function setRoomStyle(style) {
@@ -272,8 +272,10 @@ export function createClinic(app) {
     group.add(room.group);
     decor.apply();
     boards.setRoomStyle(room.style);
+    placeDecoMirror();
   }
   addSetBtn('Selesai ✓', 'mint', 0.56, 0.48, 0.28, () => closeSettings());
+  addSetBtn('Hadiah roda ›', 'pink', -0.19, SET_TOP - SETTINGS.length * ROW_GAP - 0.03, 0.34, () => openPrizes());
   function refreshSettings() {
     SETTINGS.forEach(([, label], i) => cycleBtns[i].userData.setLabel(label()));
     caseIds.forEach((id, i) => caseBtns[i].userData.setLabel(caseLabel(id)));
@@ -286,6 +288,60 @@ export function createClinic(app) {
     refreshSettings();
     layout();
   }
+  // ------------------------------------------------------------------ Atur hadiah roda (prize list and chances)
+  const fmtPct = (v) => (Math.round(v * 10) / 10).toString().replace('.', ',');
+  const prizePanel = makePanel(1.5, 1.12, (c, W, H) => {
+    card(c, W, H, { r: 0.06, stroke: P.pink, lw: 10 });
+    const pad = W * 0.04;
+    text(c, 'Hadiah Roda', pad, H * 0.075, { size: H * 0.055, weight: 800, color: P.pinkDeep });
+    const total = config.prizes.filter((p) => p.on).reduce((a, p) => a + p.chance, 0);
+    const ok = Math.abs(total - 100) < 0.01;
+    text(c, `Total: ${fmtPct(total)}%${ok ? '' : '  (dibagi otomatis jadi 100%)'}`, W * 0.36, H * 0.075, { size: H * 0.03, weight: 800, color: ok ? P.mintDark : P.pinkDeep });
+    text(c, 'Tekan nama untuk nyala/mati. − / + untuk ubah peluang. Tersimpan di headset.', pad, H * 0.13, { size: H * 0.026, color: P.muted });
+  });
+  prizePanel.mesh.position.copy(SET_CENTER);
+  prizePanel.mesh.visible = false;
+  group.add(prizePanel.mesh);
+  const prizeBtns = [];
+  const PRIZE_TOP = 0.3;
+  const prizeRows = [];
+  const stepFor = (v, up) => (up ? (v >= 10 ? 5 : v >= 2 ? 1 : 0.5) : (v > 10 ? 5 : v > 2 ? 1 : 0.5));
+  const addPrizeBtn = (label, tone, x, y, w, onSelect) => {
+    const b = makeButton(app, { label, tone, w, h: 0.07, onSelect });
+    b.position.set(SET_CENTER.x + x, SET_CENTER.y + y, SET_CENTER.z + 0.02);
+    b.visible = false;
+    group.add(b);
+    prizeBtns.push(b);
+    return b;
+  };
+  for (let i = 0; i < 8; i++) {
+    const y = PRIZE_TOP - i * 0.09;
+    const row = {
+      name: addPrizeBtn('', 'light', -0.3, y, 0.74, () => { const p = config.prizes[i]; if (!p) return; p.on = !p.on; config.save(); sfx.play('click'); refreshPrizes(); }),
+      minus: addPrizeBtn('−', 'light', 0.17, y, 0.1, () => { const p = config.prizes[i]; if (!p) return; p.chance = Math.max(0, +(p.chance - stepFor(p.chance, false)).toFixed(1)); config.save(); sfx.play('click'); refreshPrizes(); }),
+      value: addPrizeBtn('', 'mint', 0.32, y, 0.18, () => {}),
+      plus: addPrizeBtn('+', 'light', 0.47, y, 0.1, () => { const p = config.prizes[i]; if (!p) return; p.chance = Math.min(100, +(p.chance + stepFor(p.chance, true)).toFixed(1)); config.save(); sfx.play('click'); refreshPrizes(); }),
+    };
+    prizeRows.push(row);
+  }
+  addPrizeBtn('Kembali ke awal', 'pink', -0.4, -0.47, 0.5, () => { config.resetPrizes(); sfx.play('drop'); refreshPrizes(); });
+  addPrizeBtn('Selesai ✓', 'mint', 0.4, -0.47, 0.4, () => { bigContent = { kind: 'settings' }; refreshSettings(); layout(); });
+  function refreshPrizes() {
+    prizeRows.forEach((r, i) => {
+      const p = config.prizes[i];
+      r.exists = !!p;
+      if (!p) return;
+      r.name.userData.setLabel(`${p.on ? '✓' : '✗'}  ${p.text}`);
+      r.value.userData.setLabel(p.on ? `${fmtPct(p.chance)}%` : 'mati');
+    });
+    prizePanel.redraw();
+    layout();
+  }
+  function openPrizes() {
+    bigContent = { kind: 'prizes' };
+    refreshPrizes();
+  }
+
   function closeSettings() {
     bigContent = { kind: 'title' };
     big.redraw();
@@ -333,16 +389,32 @@ export function createClinic(app) {
   const glassM = new THREE.Mesh(new THREE.CircleGeometry(0.3, 40), new THREE.MeshStandardMaterial({ color: '#eaf4f8', metalness: 0.8, roughness: 0.08, emissive: '#d8ecf4', emissiveIntensity: 0.35 }));
   frameM.scale.y = glassM.scale.y = 1.3;
   decoMirror.add(frameM, glassM);
+  // the Klinik FDC look: a tall rectangular mirror in a slim black frame
+  const rectMirror = new THREE.Group();
+  const rectFrame = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.78, 0.025), new THREE.MeshStandardMaterial({ color: '#26292b', roughness: 0.45 }));
+  const rectGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.72), glassM.material);
+  rectGlass.position.z = 0.014;
+  rectMirror.add(rectFrame, rectGlass);
+  decoMirror.add(rectMirror);
+  function placeDecoMirror() {
+    const spot = room.decoMirror || { x: -2.36, y: 1.55, z: -2.15, ry: Math.PI / 2, look: 'oval' };
+    decoMirror.position.set(spot.x, spot.y, spot.z);
+    decoMirror.rotation.y = spot.ry;
+    const rect = spot.look === 'rect';
+    rectMirror.visible = rect;
+    frameM.visible = glassM.visible = !rect;
+    decoLabel.mesh.position.y = rect ? -0.47 : -0.5;
+  }
   const decoLabel = makePanel(0.36, 0.09, (c, W, H) => {
     card(c, W, H, { r: 0.45, fill: P.pinkSoft, stroke: P.pinkDeep, lw: 6 });
     text(c, 'Dekorasi', W / 2, H * 0.66, { size: H * 0.5, weight: 800, color: P.pinkDeep, align: 'center' });
   });
   decoLabel.mesh.position.y = -0.5;
   decoMirror.add(decoLabel.mesh);
-  decoMirror.position.set(-2.36, 1.55, -2.15);
-  decoMirror.rotation.y = Math.PI / 2;
   group.add(decoMirror);
+  placeDecoMirror();
   app.addTarget(glassM, { onSelect: () => openShop() });
+  app.addTarget(rectGlass, { onSelect: () => openShop() });
   const bNext = btn('Pasien berikutnya', 'mint', -0.22, ROW1, () => nextPatient(), 0.52);
   const bAgain = btn('Main lagi', 'mint', -0.43, ROW1, () => start(mode === 'tutorial' ? 'shift' : mode), 0.4);
   const bMenu = btn('Menu', 'light', 0, ROW1, () => toTitle(), 0.4);
@@ -375,7 +447,7 @@ export function createClinic(app) {
   };
   function openWheel() {
     if (state !== 'final' || !wheelReady || bigContent.prize) return;
-    wheel.setPrizes(PRIZES);
+    wheel.setPrizes(config.activePrizes());
     wheel.open();
     wheelOpen = true;
     bWheelGo.userData.setLabel('PUTAR!');
@@ -475,12 +547,16 @@ export function createClinic(app) {
     const f = state === 'final';
     const shop = t && bigContent.kind === 'shop';
     const sets = t && bigContent.kind === 'settings';
-    big.mesh.visible = (t || r || f) && !sets && !wheelOpen;
+    const prz = t && bigContent.kind === 'prizes';
+    big.mesh.visible = (t || r || f) && !sets && !prz && !wheelOpen;
     setPanel.mesh.visible = sets;
     show(setBtns, sets);
-    show([bStart, bEvent, bTut, bHow, bDecor, bSettings], t && !shop && !sets);
+    prizePanel.mesh.visible = prz;
+    show(prizeBtns, prz);
+    if (prz) for (const r of prizeRows) if (!r.exists) show([r.name, r.minus, r.value, r.plus], false);
+    show([bStart, bEvent, bTut, bHow, bDecor, bSettings], t && !shop && !sets && !prz);
     show([...shopBtns, bShopBack], shop);
-    bLobby.visible = t && !shop && !sets && FROM_LOBBY;
+    bLobby.visible = t && !shop && !sets && !prz && FROM_LOBBY;
     bNext.visible = r;
     const spinFirst = f && wheelReady && !bigContent.prize;
     bSpin.visible = spinFirst && !wheelOpen;
@@ -1334,10 +1410,11 @@ export function createClinic(app) {
 
   function makeHandMirror() {
     const g = new THREE.Group();
-    const pinkM = new THREE.MeshStandardMaterial({ color: P.pinkDeep, roughness: 0.4 });
-    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.09, 10), pinkM);
+    const handleM = new THREE.MeshStandardMaterial({ color: '#f4f1ea', roughness: 0.35 });
+    const rimM = new THREE.MeshStandardMaterial({ color: '#d9dee2', metalness: 0.8, roughness: 0.25 });
+    const handle = new THREE.Mesh(new THREE.CapsuleGeometry(0.009, 0.08, 4, 10), handleM);
     handle.position.y = -0.03;
-    const frame = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.009, 8, 24), pinkM);
+    const frame = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.007, 8, 28), rimM);
     frame.position.y = -0.13;
     const glass = new THREE.Mesh(new THREE.CircleGeometry(0.055, 24), new THREE.MeshStandardMaterial({ color: '#eaf6ff', metalness: 0.9, roughness: 0.05, emissive: '#cfeaff', emissiveIntensity: 0.4, side: THREE.DoubleSide }));
     glass.position.y = -0.13;
@@ -1525,7 +1602,7 @@ export function createClinic(app) {
     }
     for (const w of [...waiting]) { waiting.splice(waiting.indexOf(w), 1); group.remove(w.bar); w.state = 'leaving'; walkers.add(w.ch); guard((async () => { await w.ch.standUp(w.seat.front); doorOpen(); await w.ch.walkTo([{ x: 1.7, z: -2.5 }, DOOR_IN, DOOR_OUT], { speed: 1.1 }); doorClose(); removeCharacter(w.ch); })()); }
     bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : config.patientsPerShift, prize: null };
-    wheelReady = mode !== 'tutorial' && config.wheel && PRIZES.length > 0;
+    wheelReady = mode !== 'tutorial' && config.wheel && config.activePrizes().length > 0;
     big.redraw();
     layout();
     starPop = 1;
@@ -1831,7 +1908,7 @@ export function createClinic(app) {
     skip(s) { for (const t of timers) t.t = Math.min(t.t, s ?? 0); },
     setEventLeft(v) { eventLeft = v; },
     force(list) { forced = list; },
-    openShop, shopPress, decor, openSettings, closeSettings, config, makePatientData: () => makePatientData(),
+    openShop, shopPress, decor, openSettings, closeSettings, openPrizes, config, makePatientData: () => makePatientData(),
     setClock(h) { clinicTime = h; },
     get held() { return [...held.values()].map((t) => t.id); },
     get arrivalIn() { return nextArrival; },

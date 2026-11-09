@@ -23,19 +23,19 @@ export const DEFAULTS = {
 };
 
 /**
- * Roda Hadiah prizes (text only for now). `weight` is how likely each one is compared to the
- * others: weight 4 comes up twice as often as weight 2. 4 to 12 prizes look best on the wheel.
- * These are examples: change them to the real booth prizes.
+ * Roda Hadiah prizes: the default list for every headset. `chance` is the percentage that
+ * prize comes up (they should add up to 100; if not, the game scales them to 100).
+ * The booth staff can change the percentages and switch prizes on/off on the headset itself:
+ * Pengaturan → Atur hadiah roda. To rename prizes or change the defaults for every headset,
+ * edit this list and push.
  */
 export const PRIZES = [
-  { text: 'Sikat gigi FDC', weight: 4 },
-  { text: 'Stiker FDC', weight: 5 },
-  { text: 'Diskon scaling 20%', weight: 2 },
-  { text: 'Pasta gigi', weight: 3 },
-  { text: 'Gantungan kunci', weight: 4 },
-  { text: 'Cek gigi gratis', weight: 1 },
-  { text: 'Voucher Rp50.000', weight: 1 },
-  { text: 'Permen xylitol', weight: 4 },
+  { text: 'Kipas FDC Fest', chance: 70 },
+  { text: 'Gunting Kuku', chance: 10 },
+  { text: 'Tumbler', chance: 10 },
+  { text: 'Jersey FDC Fest', chance: 2.5 },
+  { text: 'Racepack FDC Fest', chance: 2.5 },
+  { text: 'Kipas Tangan Elektrik', chance: 5 },
 ];
 
 /** The choices each setting cycles through in the game. */
@@ -62,11 +62,16 @@ export const CHOICES = {
 
 const KEY = 'fdc.dentist.config';
 
+const defaultPrizes = () => PRIZES.map((p) => ({ text: p.text, chance: p.chance, on: true }));
+
 function load() {
   const saved = store.get(KEY, null) || {};
+  // prizes saved on this headset, if they still match the names in PRIZES (renamed lists start fresh)
+  const sameList = Array.isArray(saved.prizes) && saved.prizes.length === PRIZES.length && saved.prizes.every((p, i) => p.text === PRIZES[i].text);
   return {
     ...DEFAULTS,
     ...saved,
+    prizes: sameList ? saved.prizes : defaultPrizes(),
     cases: { ...DEFAULTS.cases, ...(saved.cases || {}) },
     types: { ...DEFAULTS.types, ...(saved.types || {}) },
   };
@@ -75,13 +80,22 @@ function load() {
 export const config = {
   ...load(),
   save() {
-    const { save, reset, cycle, toggle, patienceMult, pairChance, ...data } = this;
-    void save; void reset; void cycle; void toggle; void patienceMult; void pairChance;
+    const { save, reset, resetPrizes, activePrizes, cycle, toggle, patienceMult, pairChance, ...data } = this;
+    void save; void reset; void resetPrizes; void activePrizes; void cycle; void toggle; void patienceMult; void pairChance;
     store.set(KEY, data);
   },
   reset() {
     Object.assign(this, structuredClone(DEFAULTS));
+    this.prizes = defaultPrizes();
     this.save();
+  },
+  resetPrizes() {
+    this.prizes = defaultPrizes();
+    this.save();
+  },
+  /** The prizes that are switched on, with weights for the wheel. */
+  activePrizes() {
+    return this.prizes.filter((p) => p.on && p.chance > 0).map((p) => ({ text: p.text, weight: p.chance }));
   },
   /** Move a setting to its next choice. */
   cycle(key) {

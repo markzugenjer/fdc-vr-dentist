@@ -64,17 +64,36 @@ Title screen → **Pengaturan**. Everything is saved on the headset.
 
 After a Mulai kerja or Mode Event round, the final board offers **Putar Roda Hadiah!** (once per round). The wheel takes the board's place: press **PUTAR!** (or point at the wheel and pull the trigger), it spins for about 5 seconds and stops on a prize with confetti and a fanfare. **Lanjut** goes back to the final board, which keeps showing the prize for the FDC staff.
 
-The prizes are text only for now. Edit `PRIZES` in `src/game/config.js` and push:
+### Prizes and chances
+
+| Prize | Chance |
+| --- | --- |
+| Kipas FDC Fest | 70% |
+| Gunting Kuku | 10% |
+| Tumbler | 10% |
+| Kipas Tangan Elektrik | 5% |
+| Jersey FDC Fest | 2.5% |
+| Racepack FDC Fest | 2.5% |
+
+**On the headset:** Pengaturan → **Hadiah roda ›**.
+- Press a prize's name to switch it on or off.
+- Use **−** / **+** to change its chance.
+- **Kembali ke awal** restores the list above.
+- Changes save on that headset.
+
+If the chances of the prizes that are on don't add up to 100%, the header says so and the wheel scales them to 100% automatically. For example, with Gunting Kuku off, the other prizes keep their proportions.
+
+**For every headset:** edit `PRIZES` in `src/game/config.js` (`text` and `chance` in %) and push. Renaming or adding prizes resets each headset's saved list to the new defaults.
 
 ```js
 export const PRIZES = [
-  { text: 'Sikat gigi FDC', weight: 4 }, // weight 4 comes up twice as often as weight 2
-  { text: 'Cek gigi gratis', weight: 1 },
+  { text: 'Kipas FDC Fest', chance: 70 },
+  { text: 'Gunting Kuku', chance: 10 },
   ...
 ];
 ```
 
-4 to 12 prizes look best. Turn the wheel off in Pengaturan → Roda hadiah. Each headset also counts the prizes it has given out (localStorage key `fdc.dentist.prizes`).
+Up to 8 prizes fit the settings panel. Turn the wheel off in Pengaturan → Roda hadiah. Each headset also counts the prizes it has given out (localStorage key `fdc.dentist.prizes`).
 
 ## Klinik FDC room
 

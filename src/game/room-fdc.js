@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { ROOM, DOOR, SEAT, mats as baseMats, box, put, canvasTex, buildChair, rod, mergeStill } from './room.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { ROOM, DOOR, SEAT, mats as baseMats, box, put, canvasTex, rod, mergeStill } from './room.js';
 import { FONT } from '../core/ui.js';
 
 /**
@@ -211,23 +212,42 @@ export function buildFdcRoom() {
   put(still, box(0.18, 0.24, 0.12, 0.005), m.yellow, cabX + 0.18, 0.6, cab1 + 0.07);
 
   // ------------------------------------------------------------------ the dental chair (olive green, cream body) and its unit
-  const chair = buildChair({ ...m, white: m.cream, mint: s(FDC_CHAIR.pad, { roughness: 0.4 }), pink: s(FDC_CHAIR.accent, { roughness: 0.45 }) });
+  const chair = buildFdcChair(m, s);
   group.add(chair.group);
-  // overhead lamp on a cream pole behind the chair
-  const pole = new THREE.Vector3(-0.75, 0, -1.65);
-  put(still, new THREE.CylinderGeometry(0.14, 0.16, 0.05, 20), m.cream, pole.x, 0.025, pole.z);
-  put(still, new THREE.CylinderGeometry(0.03, 0.03, 2.2, 12), m.cream, pole.x, 1.1, pole.z);
+  // the chair's light: a cream post behind the headrest, an arm, and an oval reflector head
+  const pole = new THREE.Vector3(-0.62, 0, -1.25);
+  put(still, box(0.16, 0.08, 0.16, 0.03), m.cream, pole.x, 0.04, pole.z);
+  put(still, new THREE.CylinderGeometry(0.035, 0.045, 2.0, 14), m.cream, pole.x, 1.0, pole.z);
+  put(still, new THREE.SphereGeometry(0.05, 12, 10), m.cream, pole.x, 2.02, pole.z);
   const lampHead = new THREE.Group();
-  lampHead.position.set(-0.22, 2.05, -0.9);
-  lampHead.rotation.set(-0.35, 0.3, 0);
-  rod(still, new THREE.Vector3(pole.x, 2.18, pole.z), lampHead.position.clone().add(new THREE.Vector3(0, 0.05, 0)), 0.02, m.cream);
+  lampHead.position.set(-0.22, 1.98, -0.85);
+  lampHead.rotation.set(-0.45, 0.35, 0);
+  const elbow = new THREE.Vector3(-0.42, 2.12, -1.0);
+  rod(still, new THREE.Vector3(pole.x, 2.02, pole.z), elbow, 0.022, m.cream);
+  rod(still, elbow, lampHead.position.clone().add(new THREE.Vector3(0, 0.07, 0)), 0.02, m.cream);
   still.add(lampHead);
-  put(lampHead, box(0.32, 0.07, 0.18, 0.03), m.cream, 0, 0, 0);
-  put(lampHead, new THREE.PlaneGeometry(0.26, 0.12), b.lampGlow, 0, -0.036, 0, Math.PI / 2);
-  // spittoon
-  put(still, new THREE.CylinderGeometry(0.025, 0.025, 0.72, 10), m.cream, 0.2, 0.36, -1.0);
-  put(still, new THREE.CylinderGeometry(0.12, 0.06, 0.08, 20), m.white, 0.2, 0.74, -1.0);
-  put(still, new THREE.CylinderGeometry(0.09, 0.09, 0.01, 20), b.water, 0.2, 0.77, -1.0);
+  const reflector = put(lampHead, new THREE.SphereGeometry(0.16, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), m.cream, 0, 0, 0, Math.PI);
+  reflector.scale.set(1.25, 0.35, 0.75);
+  put(lampHead, new THREE.CircleGeometry(0.15, 24), b.lampGlow, 0, -0.002, 0, Math.PI / 2).scale.set(1.2, 0.7, 1);
+  for (const sx of [-1, 1]) put(lampHead, new THREE.CylinderGeometry(0.012, 0.012, 0.08, 8), m.steel, sx * 0.22, -0.02, 0, 0, 0, Math.PI / 2);
+  // the patient's water unit by the head (patient's left): cream column, white bowl, cup tap,
+  // and the assistant arm with the suction tips
+  const wu = new THREE.Vector3(0.2, 0, -1.02);
+  put(still, box(0.2, 0.62, 0.22, 0.06), m.cream, wu.x, 0.38, wu.z);
+  put(still, new THREE.CylinderGeometry(0.06, 0.07, 0.12, 14), m.cream, wu.x, 0.72, wu.z);
+  put(still, new THREE.CylinderGeometry(0.13, 0.07, 0.09, 24, 1, true), m.white, wu.x, 0.79, wu.z);
+  put(still, new THREE.CylinderGeometry(0.07, 0.07, 0.01, 18), m.white, wu.x, 0.75, wu.z);
+  put(still, new THREE.CylinderGeometry(0.09, 0.09, 0.008, 20), b.water, wu.x, 0.765, wu.z);
+  rod(still, new THREE.Vector3(wu.x - 0.08, 0.8, wu.z - 0.06), new THREE.Vector3(wu.x - 0.08, 0.95, wu.z - 0.06), 0.008, m.steel);
+  rod(still, new THREE.Vector3(wu.x - 0.08, 0.95, wu.z - 0.06), new THREE.Vector3(wu.x - 0.02, 0.93, wu.z - 0.03), 0.007, m.steel);
+  put(still, new THREE.CylinderGeometry(0.025, 0.02, 0.06, 10), s('#cfe7f0', { roughness: 0.2, transparent: true, opacity: 0.7 }), wu.x - 0.03, 0.82, wu.z - 0.02);
+  const armEnd = new THREE.Vector3(wu.x + 0.25, 0.8, wu.z + 0.05);
+  rod(still, new THREE.Vector3(wu.x + 0.08, 0.6, wu.z), armEnd, 0.018, m.cream);
+  put(still, box(0.2, 0.05, 0.1, 0.02), m.cream, armEnd.x + 0.06, armEnd.y + 0.02, armEnd.z);
+  for (let k = 0; k < 3; k++) {
+    rod(still, new THREE.Vector3(armEnd.x + 0.0 + k * 0.05, armEnd.y + 0.04, armEnd.z), new THREE.Vector3(armEnd.x + 0.02 + k * 0.05, armEnd.y + 0.16, armEnd.z + 0.02), 0.009, k === 0 ? m.black : s('#7a8a8f'));
+    rod(still, new THREE.Vector3(armEnd.x + k * 0.05, armEnd.y, armEnd.z), new THREE.Vector3(wu.x + 0.05, 0.25, wu.z + 0.08), 0.006, m.black);
+  }
   // the dentist's round stool (green seat, five-star base), parked out of the way
   const stool = new THREE.Vector3(-1.35, 0, -0.35);
   put(still, new THREE.CylinderGeometry(0.2, 0.2, 0.08, 20), s(FDC_CHAIR.pad, { roughness: 0.4 }), stool.x, 0.55, stool.z);
@@ -250,22 +270,60 @@ export function buildFdcRoom() {
   // the AC unit, high on the right wall
   put(still, box(0.22, 0.28, 0.9, 0.04), m.white, maxX - 0.12, 2.48, -1.65);
   put(still, new THREE.BoxGeometry(0.02, 0.03, 0.8), s('#d6dadc'), maxX - 0.235, 2.38, -1.65);
-  // the doctor's desk at the front right: oak top, black legs, monitor, keyboard, tooth models
-  const desk = { x: maxX - 0.42, z: 0.85 };
-  put(still, box(0.62, 0.04, 1.25, 0.008), m.oak, desk.x, 0.75, desk.z);
-  put(still, box(0.04, 0.3, 1.2, 0.006), m.oak, desk.x + 0.29, 0.6, desk.z);
-  for (const dz of [-0.56, 0.56]) for (const dx of [-0.26, 0.26]) put(still, new THREE.CylinderGeometry(0.015, 0.012, 0.73, 6), m.black, desk.x + dx, 0.365, desk.z + dz);
-  put(still, box(0.04, 0.34, 0.52, 0.01), m.white, desk.x + 0.1, 1.02, desk.z + 0.1);
-  put(still, box(0.02, 0.28, 0.46, 0.006), m.glassDark, desk.x + 0.078, 1.04, desk.z + 0.1);
-  put(still, new THREE.BoxGeometry(0.03, 0.14, 0.03), m.steel, desk.x + 0.14, 0.83, desk.z + 0.1);
-  put(still, box(0.16, 0.012, 0.42, 0.004), m.black, desk.x - 0.12, 0.775, desk.z + 0.1);
-  put(still, box(0.2, 0.004, 0.22, 0.002), m.black, desk.x - 0.12, 0.772, desk.z - 0.25);
-  // tooth models on the desk: big molars on a red base and a clear jaw
-  put(still, box(0.12, 0.04, 0.22, 0.01), s('#d9473f', { roughness: 0.5 }), desk.x - 0.12, 0.79, desk.z + 0.48);
-  for (let k = 0; k < 3; k++) put(still, new THREE.SphereGeometry(0.035, 10, 8), m.white, desk.x - 0.12, 0.84, desk.z + 0.41 + k * 0.07);
-  put(still, new THREE.SphereGeometry(0.06, 12, 8), s('#e8f2f6', { transparent: true, opacity: 0.6, roughness: 0.1 }), desk.x - 0.1, 0.81, desk.z - 0.45);
-  // the tan office chair on the room side of the desk
-  tanChair(still, m, desk.x - 0.6, desk.z, Math.PI / 2);
+  // the doctor's desk in the front-right corner, as in the photos: a 1.4 m oak top on black
+  // hairpin legs with a front panel, a big white all-in-one monitor, keyboard, mouse on a black
+  // pad, the tooth models; the doctor's tan chair behind it, two black chairs for the patient in front
+  const desk = { x: 1.62, z: 1.0, w: 0.68, l: 1.4, y: 0.76 };
+  put(still, box(desk.w, 0.035, desk.l, 0.008), m.oak, desk.x, desk.y, desk.z);
+  put(still, new THREE.BoxGeometry(desk.w - 0.02, 0.004, desk.l - 0.02), s('#e7c79a', { roughness: 0.35 }), desk.x, desk.y + 0.019, desk.z); // glossy top
+  put(still, box(0.02, 0.36, desk.l - 0.08, 0.005), m.oak, desk.x - desk.w / 2 + 0.03, desk.y - 0.2, desk.z); // modesty panel (patient side)
+  put(still, box(desk.w - 0.06, 0.08, 0.02, 0.004), m.oakDark, desk.x, desk.y - 0.06, desk.z + desk.l / 2 - 0.04);
+  for (const dz of [-1, 1]) for (const dx of [-1, 1]) {
+    // hairpin legs: two thin rods per leg meeting at the floor
+    const top = new THREE.Vector3(desk.x + dx * (desk.w / 2 - 0.06), desk.y - 0.02, desk.z + dz * (desk.l / 2 - 0.06));
+    rod(still, top, new THREE.Vector3(top.x, 0.01, top.z - dz * 0.05), 0.008, m.black);
+    rod(still, top.clone().add(new THREE.Vector3(0, 0, -dz * 0.1)), new THREE.Vector3(top.x, 0.01, top.z - dz * 0.05), 0.008, m.black);
+  }
+  // all-in-one monitor (white, 24"), facing the doctor's chair (+X)
+  const mon = new THREE.Vector3(desk.x - 0.12, 0, desk.z - 0.15);
+  put(still, box(0.025, 0.42, 0.62, 0.012), m.white, mon.x, desk.y + 0.37, mon.z);
+  put(still, box(0.026, 0.07, 0.62, 0.01), s('#e8eaec', { roughness: 0.3 }), mon.x, desk.y + 0.13, mon.z); // chin
+  put(still, box(0.08, 0.2, 0.06, 0.01), m.steel, mon.x - 0.05, desk.y + 0.1, mon.z, 0, 0, 0.25); // stand
+  put(still, box(0.18, 0.01, 0.2, 0.004), m.steel, mon.x - 0.06, desk.y + 0.023, mon.z);
+  put(group, new THREE.PlaneGeometry(0.58, 0.32), new THREE.MeshBasicMaterial({ map: screenTexture() }), mon.x + 0.014, desk.y + 0.39, mon.z, 0, Math.PI / 2, 0);
+  // keyboard, mouse pad with mouse
+  const kb = new THREE.Vector3(desk.x + 0.12, desk.y + 0.025, desk.z - 0.15);
+  put(still, box(0.15, 0.015, 0.44, 0.005), m.black, kb.x, kb.y, kb.z);
+  for (let r = 0; r < 4; r++) put(still, new THREE.BoxGeometry(0.025, 0.006, 0.4), s('#3a3d40'), kb.x - 0.05 + r * 0.033, kb.y + 0.009, kb.z);
+  put(still, new THREE.BoxGeometry(0.2, 0.004, 0.24), m.black, desk.x + 0.15, desk.y + 0.02, desk.z + 0.27);
+  const mouse = put(still, new THREE.SphereGeometry(0.035, 14, 10), m.black, desk.x + 0.16, desk.y + 0.03, desk.z + 0.3);
+  mouse.scale.set(1.5, 0.45, 0.95);
+  // tooth models: three big molars with dark cavities on a red base, and a clear jaw with white teeth
+  const red = s('#d9473f', { roughness: 0.45 });
+  const tm = new THREE.Vector3(desk.x - 0.1, desk.y + 0.02, desk.z + 0.38);
+  put(still, box(0.13, 0.05, 0.26, 0.015), red, tm.x, tm.y + 0.025, tm.z);
+  for (let k = 0; k < 3; k++) {
+    const t = put(still, new THREE.SphereGeometry(0.045, 14, 10), m.white, tm.x, tm.y + 0.09, tm.z - 0.08 + k * 0.08);
+    t.scale.set(1, 0.85, 0.9);
+    put(still, new THREE.CylinderGeometry(0.03, 0.02, 0.05, 10), m.white, tm.x, tm.y + 0.06, tm.z - 0.08 + k * 0.08);
+    put(still, new THREE.CircleGeometry(0.012, 8), s('#4a2f2a'), tm.x, tm.y + 0.128, tm.z - 0.08 + k * 0.08, -Math.PI / 2);
+  }
+  const jaw = new THREE.Vector3(desk.x - 0.1, desk.y + 0.02, desk.z - 0.52);
+  const clear = s('#e8f2f6', { transparent: true, opacity: 0.55, roughness: 0.08 });
+  put(still, new THREE.TorusGeometry(0.06, 0.022, 8, 18, Math.PI), clear, jaw.x, jaw.y + 0.03, jaw.z, -Math.PI / 2);
+  put(still, new THREE.TorusGeometry(0.06, 0.022, 8, 18, Math.PI), clear, jaw.x, jaw.y + 0.08, jaw.z, -Math.PI / 2);
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 7) * Math.PI;
+    for (const yy of [0.045, 0.065]) put(still, new THREE.BoxGeometry(0.014, 0.018, 0.014), m.white, jaw.x + Math.sin(a) * 0.06, jaw.y + yy, jaw.z + Math.cos(a) * 0.06);
+  }
+  put(still, new THREE.CylinderGeometry(0.004, 0.004, 0.06, 6), m.steel, jaw.x - 0.065, jaw.y + 0.055, jaw.z);
+  // a pen cup and a box of tissues
+  put(still, new THREE.CylinderGeometry(0.03, 0.03, 0.09, 12), m.black, desk.x - 0.22, desk.y + 0.065, desk.z + 0.6);
+  for (let k = 0; k < 3; k++) put(still, new THREE.CylinderGeometry(0.004, 0.004, 0.13, 6), [m.white, m.blue, m.black][k], desk.x - 0.22 + (k - 1) * 0.01, desk.y + 0.12, desk.z + 0.6, 0, 0, (k - 1) * 0.15);
+  put(still, box(0.12, 0.08, 0.22, 0.01), m.white, desk.x + 0.2, desk.y + 0.06, desk.z + 0.58);
+  // chairs: the doctor's tan chair behind the desk, two black chairs on the patient side
+  tanChair(still, m, desk.x + 0.52, desk.z - 0.1, -Math.PI / 2);
+  for (const dz of [-0.33, 0.33]) blackChair(still, m, desk.x - 0.68, desk.z + dz, Math.PI / 2);
 
   // ------------------------------------------------------------------ the big FDC print on the left wall (this is the Dekorasi poster)
   const posterTex = happinessPrint();
@@ -314,6 +372,8 @@ export function buildFdcRoom() {
     mats: m,
     poster: posterMesh,
     style: 'fdc',
+    // where the Dekorasi mirror hangs: a slim black-framed wall mirror between the counter and the big print
+    decoMirror: { x: minX + 0.03, y: 1.55, z: -0.5, ry: Math.PI / 2, look: 'rect' },
     // Dekorasi's first choices map to the real clinic's look
     wallColor: (opt) => (opt.id === 'cream' ? SAGE : opt.color),
     chairColors: (opt) => (opt.id === 'mint' ? FDC_CHAIR : opt),
@@ -356,7 +416,7 @@ function blackChair(parent, m, x, z, yaw) {
   for (let k = -2; k <= 2; k++) put(g, new THREE.BoxGeometry(0.008, 0.38, 0.075), m.black, k * 0.08, 0.74, -0.215, -0.18);
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) put(g, new THREE.CylinderGeometry(0.015, 0.01, 0.46, 6), m.black, sx * 0.19, 0.22, sz * 0.18, sz * 0.12, 0, -sx * 0.08);
   g.position.set(x, 0, z);
-  g.rotation.y = yaw + Math.PI;
+  g.rotation.y = yaw; // the seat's front (+z) turns to face `yaw`
   parent.add(g);
 }
 
@@ -373,7 +433,7 @@ function tanChair(parent, m, x, z, yaw) {
     put(g, new THREE.BoxGeometry(0.025, 0.2, 0.025), m.steel, sx * 0.28, 0.56, 0.12);
   }
   g.position.set(x, 0, z);
-  g.rotation.y = yaw + Math.PI;
+  g.rotation.y = yaw;
   parent.add(g);
 }
 let seam = null;
@@ -574,5 +634,112 @@ function vaseMini() {
     g.fillStyle = '#c4643f'; g.beginPath(); g.ellipse(65, 140, 22, 26, 0, 0, Math.PI * 2); g.fill();
     g.fillStyle = '#e3a24a'; g.beginPath(); g.ellipse(92, 135, 16, 30, 0, 0, Math.PI * 2); g.fill();
     g.strokeStyle = '#3d5a3a'; g.lineWidth = 3; g.beginPath(); g.moveTo(65, 115); g.lineTo(60, 60); g.moveTo(92, 105); g.lineTo(98, 55); g.stroke();
+  });
+}
+
+// =================================================================== the dental chair
+/**
+ * A dental chair shaped like the real one: a cream pedestal on an oval foot, a contoured
+ * olive seat, a tapered backrest with a cream shell, a pill-shaped headrest, a narrowing
+ * legrest, and one armrest on the patient's left. Same hinges and API as the cartoon chair
+ * (group, back, legs, recline/want, flat, padMat, accentMat, update), so patients sit in it the same way.
+ */
+function buildFdcChair(m, s) {
+  const group = new THREE.Group();
+  group.position.set(SEAT.x, 0, SEAT.z);
+  const pad = s(FDC_CHAIR.pad, { roughness: 0.38 });
+  const accent = s(FDC_CHAIR.accent, { roughness: 0.42 });
+  const shell = m.cream;
+  // foot and pedestal (chair forward is +X)
+  const foot = put(group, new THREE.CylinderGeometry(0.34, 0.36, 0.04, 32), shell, 0.05, 0.02, 0);
+  foot.scale.z = 0.62;
+  put(group, new RoundedBoxGeometry(0.26, 0.34, 0.22, 4, 0.07), shell, -0.04, 0.2, 0);
+  put(group, new RoundedBoxGeometry(0.5, 0.07, 0.42, 4, 0.03), shell, 0.0, 0.37, 0);
+  put(group, new THREE.BoxGeometry(0.02, 0.02, 0.38), m.steel, 0.25, 0.37, 0); // chrome trim
+  // seat cushion: soft, rounded, a little dished
+  put(group, new RoundedBoxGeometry(0.5, 0.1, 0.46, 5, 0.045), pad, 0.02, 0.44, 0);
+  for (const sz of [-1, 1]) put(group, new RoundedBoxGeometry(0.46, 0.06, 0.06, 4, 0.028), pad, 0.02, 0.48, sz * 0.2);
+  // armrest on the patient's left (away from the dentist)
+  const arm = new THREE.Group();
+  arm.position.set(-0.02, 0.5, -0.27);
+  group.add(arm);
+  put(arm, new RoundedBoxGeometry(0.05, 0.16, 0.05, 3, 0.02), shell, -0.08, 0.04, 0);
+  put(arm, new RoundedBoxGeometry(0.36, 0.05, 0.08, 4, 0.024), shell, 0.04, 0.14, 0);
+  // backrest on a hinge at the back of the seat
+  const back = new THREE.Group();
+  back.position.set(-0.15, 0.46, 0);
+  group.add(back);
+  const bp = new THREE.Shape();
+  bp.moveTo(-0.21, 0);
+  bp.lineTo(0.21, 0);
+  bp.quadraticCurveTo(0.25, 0.32, 0.23, 0.6);
+  bp.quadraticCurveTo(0.22, 0.7, 0.12, 0.71);
+  bp.lineTo(-0.12, 0.71);
+  bp.quadraticCurveTo(-0.22, 0.7, -0.23, 0.6);
+  bp.quadraticCurveTo(-0.25, 0.32, -0.21, 0);
+  const backGeo = new THREE.ExtrudeGeometry(bp, { depth: 0.06, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 4, curveSegments: 10 });
+  backGeo.rotateY(-Math.PI / 2);
+  backGeo.translate(-0.03, 0, 0);
+  put(back, backGeo, pad, -0.02, 0.0, 0);
+  const shellGeo = backGeo.clone();
+  shellGeo.scale(0.6, 0.96, 0.96);
+  put(back, shellGeo, shell, -0.075, 0.01, 0);
+  // a channel down the middle (stitching)
+  put(back, new THREE.BoxGeometry(0.004, 0.6, 0.012), s('#9db065'), 0.035, 0.33, 0);
+  // headrest on a short neck
+  put(back, new THREE.CylinderGeometry(0.02, 0.02, 0.1, 10), m.steel, -0.07, 0.76, 0);
+  put(back, new RoundedBoxGeometry(0.08, 0.13, 0.27, 5, 0.04), accent, -0.04, 0.84, 0);
+  // legrest: narrowing towards the feet, with a cream foot plate
+  const legs = new THREE.Group();
+  legs.position.set(0.24, 0.42, 0);
+  group.add(legs);
+  const lp = new THREE.Shape();
+  lp.moveTo(0, -0.22);
+  lp.lineTo(0.58, -0.16);
+  lp.quadraticCurveTo(0.62, 0, 0.58, 0.16);
+  lp.lineTo(0, 0.22);
+  lp.closePath();
+  const legGeo = new THREE.ExtrudeGeometry(lp, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.025, bevelSize: 0.025, bevelSegments: 4, curveSegments: 8 });
+  legGeo.rotateX(Math.PI / 2);
+  legGeo.translate(0, 0.04, 0);
+  put(legs, legGeo, pad, 0.0, 0, 0);
+  const legShell = legGeo.clone();
+  legShell.scale(1, 0.6, 0.95);
+  put(legs, legShell, shell, 0, -0.035, 0);
+  put(legs, new RoundedBoxGeometry(0.05, 0.12, 0.3, 3, 0.02), shell, 0.6, 0.0, 0);
+  const chair = { group, back, legs, recline: 0, want: 0, flat: 0, flatNow: 0, padMat: pad, accentMat: accent };
+  chair.update = (dt) => {
+    chair.recline += (chair.want - chair.recline) * (1 - Math.exp(-dt * 3));
+    chair.flatNow += (chair.flat - chair.flatNow) * (1 - Math.exp(-dt * 4));
+    back.rotation.z = chair.recline * SEAT.recline + 0.05 + chair.flatNow * 1.25;
+    legs.rotation.z = -0.35 - chair.recline * 0.2;
+  };
+  chair.flat = chair.flatNow = 1;
+  chair.update(1);
+  return chair;
+}
+
+/** The all-in-one monitor's screen: the FDC clinic software with a patient chart. */
+function screenTexture() {
+  return canvasTex(512, 284, (g, w, h) => {
+    g.fillStyle = '#f4f7f5'; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#3cb371'; g.fillRect(0, 0, w, 34);
+    g.fillStyle = '#fff'; g.font = `800 20px ${FONT}`; g.fillText('fdc  Dental Clinic', 12, 24);
+    g.font = `600 12px ${FONT}`; g.fillText('Rekam Medis', w - 100, 22);
+    g.fillStyle = '#e3ece6'; g.fillRect(0, 34, 120, h - 34);
+    g.fillStyle = '#5f7466'; g.font = `600 12px ${FONT}`;
+    ['Jadwal', 'Pasien', 'Odontogram', 'Rontgen', 'Tagihan'].forEach((t, i) => g.fillText(t, 14, 62 + i * 26));
+    // odontogram: two rows of teeth
+    for (let r = 0; r < 2; r++) for (let k = 0; k < 16; k++) {
+      const x = 140 + k * 22;
+      const y = 70 + r * 46;
+      g.fillStyle = (k * 7 + r * 3) % 11 === 0 ? '#f6b6d3' : '#ffffff';
+      g.strokeStyle = '#9aa8a0'; g.lineWidth = 1.5;
+      g.beginPath(); g.roundRect(x, y, 18, 30, 5); g.fill(); g.stroke();
+    }
+    g.fillStyle = '#1f3a2a'; g.font = `700 14px ${FONT}`; g.fillText('Catatan:', 140, 190);
+    g.fillStyle = '#5f7466'; g.font = `500 12px ${FONT}`; g.fillText('Kontrol 6 bulan lagi · Sikat gigi 2x sehari', 140, 210);
+    g.fillStyle = '#3cb371'; g.beginPath(); g.roundRect(140, 228, 110, 30, 8); g.fill();
+    g.fillStyle = '#fff'; g.font = `700 13px ${FONT}`; g.fillText('Simpan', 172, 248);
   });
 }

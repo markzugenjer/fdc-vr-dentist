@@ -1802,6 +1802,8 @@ export function createClinic(app) {
         tool.tip.getWorldPosition(tmp);
         ch.lookAt(tmp.distanceTo(ch.mouthWorld(tmp2)) < 0.35 ? head : tool.tip.getWorldPosition(new THREE.Vector3()));
       } else if (state === 'treat' || state === 'react' || state === 'calm') ch.lookAt(head);
+      // during treatment the mouth always stays open with the teeth showing, whatever the face
+      ch.treating = state === 'treat' || state === 'react';
       ch.update(dt);
       // patience in the chair (none in the tutorial)
       if ((state === 'treat' || state === 'calm') && mode !== 'tutorial') {

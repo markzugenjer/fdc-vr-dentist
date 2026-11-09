@@ -367,14 +367,14 @@ export class Character {
   }
 
   /** Place lips, inside and teeth for how wide the mouth is open (0 closed … 1.2 screaming). */
-  layoutMouth(open, wide = 1, upperOnly = false) {
+  layoutMouth(open, wide = 1, upperOnly = false, forceTeeth = false) {
     const W = this.mouthW * wide;
     const H = Math.max(0.004, 0.066 * open);
     this.cavity.scale.set(W, H, 1);
     this.lips.scale.set(W, H, 0.09); // flat ring (the torus is 1 m wide before scaling)
     this.tongue.scale.set(W * 0.62, H * 0.38, 0.012);
     this.tongue.position.y = -H * 0.5;
-    const show = open > 0.5; // teeth only when the mouth is open wide for treatment
+    const show = forceTeeth || open > 0.5; // teeth only when the mouth is open wide for treatment
     for (const row of ['upper', 'lower']) {
       const sign = row === 'upper' ? 1 : -1;
       this.teeth[row].forEach((t, i) => {
@@ -598,11 +598,13 @@ export class Character {
     let open = c.open;
     let mode = tg.mouth;
     if (talking) { mode = 'talk'; open = 0.18 + Math.abs(Math.sin(t * 14)) * 0.32; }
+    // in treatment the mouth never closes or hides the teeth (the face still shows through eyes and brows)
+    if (this.treating) { mode = 'open'; open = Math.max(c.open, 0.75) + (talking ? Math.abs(Math.sin(t * 14)) * 0.12 : 0); }
     const showOpen = mode === 'open' || mode === 'talk' || mode === 'grin';
     this.open.visible = showOpen;
     this.smile.visible = mode === 'smile';
     this.frown.visible = mode === 'frown';
-    if (showOpen) this.layoutMouth(Math.max(0.12, open), tg.x ? 1.15 : mode === 'talk' ? 0.62 : mode === 'grin' ? 0.9 : 1, mode === 'talk' || mode === 'grin');
+    if (showOpen) this.layoutMouth(Math.max(0.12, open), tg.x ? 1.15 : mode === 'talk' ? 0.62 : mode === 'grin' ? 0.9 : 1, mode === 'talk' || mode === 'grin', this.treating);
     this.open.scale.y = mode === 'grin' ? 0.7 : 1;
     this.open.position.y = mode === 'grin' ? 0.008 : 0;
 

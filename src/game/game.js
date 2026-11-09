@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { P } from './palette.js';
 import { buildRoom, DOOR, SEAT } from './room.js';
+import { buildFdcRoom } from './room-fdc.js';
 import { Character } from './character.js';
 import { ToolTray, TOOL_INFO } from './tools.js';
 import { MouthWork } from './mouth.js';
@@ -51,7 +52,11 @@ const LOBBY_URL = location.port === '5175'
 
 export function createClinic(app) {
   const group = new THREE.Group();
-  const room = buildRoom();
+  // the treatment room: Klinik FDC (modelled on a real FDC room) or the original cartoon room,
+  // switchable in Pengaturan → Ruangan. `room` stays the same object so everything keeps its reference.
+  const buildRoomStyle = (style) => (style === 'kartun' ? buildRoom() : buildFdcRoom());
+  const room = {};
+  Object.defineProperties(room, Object.getOwnPropertyDescriptors(buildRoomStyle(config.roomStyle)));
   group.add(room.group);
   const fx = new Effects(group, 160);
   const sfx = app.sfx;
@@ -60,6 +65,7 @@ export function createClinic(app) {
   group.add(tray.group);
   tray.setGold(progress.has('golddrill'));
   const boards = buildBoards(app, group);
+  boards.setRoomStyle(room.style);
 
   const assistant = new Character({ height: 1.06, badge: 'fdc', ...ASSISTANT.look });
   assistant.root.position.set(-0.95, 0, -1.15);
@@ -213,6 +219,7 @@ export function createClinic(app) {
     return typeof c === 'object' ? c.label : v;
   };
   const SETTINGS = [
+    ['roomStyle', () => `Ruangan: ${choiceLabel('roomStyle')}`],
     ['patientsPerShift', () => `Pasien per shift: ${config.patientsPerShift}`],
     ['eventMinutes', () => `Mode Event: ${config.eventMinutes} menit`],
     ['patience', () => `Kesabaran pasien: ${choiceLabel('patience')}`],
@@ -233,7 +240,8 @@ export function createClinic(app) {
     setBtns.push(b);
     return b;
   };
-  const cycleBtns = SETTINGS.map(([key, label], i) => addSetBtn(label(), 'light', -0.36, SET_TOP - i * 0.078, 0.66, () => { config.cycle(key); sfx.play('click'); refreshSettings(); }));
+  const ROW_GAP = 0.072;
+  const cycleBtns = SETTINGS.map(([key, label], i) => addSetBtn(label(), 'light', -0.36, SET_TOP - i * ROW_GAP, 0.66, () => { config.cycle(key); sfx.play('click'); if (key === 'roomStyle') setRoomStyle(config.roomStyle); refreshSettings(); }));
   const caseIds = Object.keys(CASES);
   const caseLabel = (id) => `${config.cases[id] ? '✓' : '✗'}  ${CASES[id].title}${CASES[id].kidsOnly ? ' (anak)' : ''}`;
   const caseBtns = caseIds.map((id, i) => addSetBtn(caseLabel(id), 'light', 0.37, SET_TOP - i * 0.07, 0.64, () => {
@@ -245,7 +253,26 @@ export function createClinic(app) {
   const typeIds = Object.keys(TYPE_NAMES);
   const typeLabel = (id) => `${config.types[id] ? '✓' : '✗'}  ${TYPE_NAMES[id]}`;
   const typeBtns = typeIds.map((id, i) => addSetBtn(typeLabel(id), 'light', 0.37, SET_TYPES_Y - i * 0.068, 0.64, () => { config.toggle('types', id); sfx.play('click'); refreshSettings(); }));
-  addSetBtn('Kembali ke awal', 'pink', -0.36, SET_TOP - SETTINGS.length * 0.078 - 0.03, 0.66, () => { config.reset(); sfx.play('drop'); refreshSettings(); });
+  addSetBtn('Kembali ke awal', 'pink', -0.36, SET_TOP - SETTINGS.length * ROW_GAP - 0.03, 0.66, () => { config.reset(); sfx.play('drop'); setRoomStyle(config.roomStyle); refreshSettings(); });
+
+  /** Swap the treatment room in place (the game keeps going; chair, door and clock carry over). */
+  function setRoomStyle(style) {
+    if (room.style === (style === 'kartun' ? 'kartun' : 'fdc')) return;
+    const keep = { recline: room.chair.recline, want: room.chair.want, flat: room.chair.flat, flatNow: room.chair.flatNow, time: room.time, door: room.door.want, amount: room.door.amount };
+    group.remove(room.group);
+    room.group.traverse((o) => o.geometry?.dispose());
+    const next = buildRoomStyle(style);
+    for (const k of Object.keys(room)) delete room[k];
+    Object.defineProperties(room, Object.getOwnPropertyDescriptors(next));
+    Object.assign(room.chair, { recline: keep.recline, want: keep.want, flat: keep.flat, flatNow: keep.flatNow });
+    room.door.want = keep.door;
+    room.door.amount = keep.amount;
+    room.setTime(keep.time);
+    room.update(0);
+    group.add(room.group);
+    decor.apply();
+    boards.setRoomStyle(room.style);
+  }
   addSetBtn('Selesai ✓', 'mint', 0.56, 0.48, 0.28, () => closeSettings());
   function refreshSettings() {
     SETTINGS.forEach(([, label], i) => cycleBtns[i].userData.setLabel(label()));

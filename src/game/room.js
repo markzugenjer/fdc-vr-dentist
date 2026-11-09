@@ -17,7 +17,7 @@ export const DOOR = { x: 1.5, z: ROOM.minZ, w: 0.92, h: 2.1 };
 export const SEAT = { x: 0.2, y: 0.5, z: -0.74, yaw: Math.PI / 2, recline: 0.55 };
 
 const M = {};
-function mats() {
+export function mats() {
   if (M.ready) return M;
   const s = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.75, ...o });
   Object.assign(M, {
@@ -41,8 +41,8 @@ function mats() {
   return M;
 }
 
-const box = (w, h, d, r = 0.02) => new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2, h / 2, d / 2) - 1e-4);
-const put = (parent, geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
+export const box = (w, h, d, r = 0.02) => new RoundedBoxGeometry(w, h, d, 3, Math.min(r, w / 2, h / 2, d / 2) - 1e-4);
+export const put = (parent, geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
   m.rotation.set(rx, ry, rz);
@@ -50,7 +50,7 @@ const put = (parent, geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
   return m;
 };
 
-function canvasTex(w, h, draw, repeat) {
+export function canvasTex(w, h, draw, repeat) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
@@ -281,6 +281,7 @@ export function buildRoom() {
     chair,
     mats: m,
     poster: posterMesh,
+    style: 'kartun',
     /** Clinic time of day in hours (8.0 = 08:00): moves the clock hands, the light and the sky. */
     setTime(hours) {
       clockHours = hours;
@@ -364,7 +365,7 @@ function buildFishTank(parent, m) {
   };
 }
 
-function buildChair(m) {
+export function buildChair(m) {
   const group = new THREE.Group();
   // the chair's own colours (can be changed in Dekorasi without touching the rest of the room)
   m = { ...m, mint: m.mint.clone(), pink: m.pink.clone() };
@@ -406,7 +407,7 @@ function buildChair(m) {
 }
 
 /** A cylinder from point a to point b. */
-function rod(parent, a, b, r, mat) {
+export function rod(parent, a, b, r, mat) {
   const len = a.distanceTo(b);
   const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat);
   m.position.copy(a).add(b).multiplyScalar(0.5);
@@ -431,7 +432,7 @@ export function toothShape(size, mat) {
 }
 
 /** Merge every mesh under `still` into one mesh per material (fewer draw calls on the Quest). */
-function mergeStill(still) {
+export function mergeStill(still) {
   still.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(still.matrixWorld).invert();
   const byMat = new Map();

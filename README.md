@@ -47,6 +47,7 @@ Title screen → **Pengaturan**. Everything is saved on the headset.
 
 | Setting | Choices (default first) |
 | --- | --- |
+| Ruangan | Klinik FDC, Kartun (lama). Switches the room right away |
 | Pasien per shift | 5, 7, 10, 2, 3 |
 | Mode Event | 3, 5, 1, 2 minutes |
 | Kesabaran pasien | Normal, Cepat bosan, Santai |
@@ -74,6 +75,17 @@ export const PRIZES = [
 ```
 
 4 to 12 prizes look best. Turn the wheel off in Pengaturan → Roda hadiah. Each headset also counts the prizes it has given out (localStorage key `fdc.dentist.prizes`).
+
+## Klinik FDC room
+
+The default room is modelled on photos of a real FDC Dental Clinic treatment room:
+- sage-green walls, glossy white tiles, a warm LED cove
+- the misty jungle mural with the round FDC DENTAL CLINIC logo behind the chair
+- the oak counter with drawers, sterilizer, double sink and towels, and the oak shelf with the two FDC art prints
+- the curing light, the yellow biohazard box, black leather chairs, the oak desk with a monitor and tooth models, the tan office chair
+- the AC unit, the white glass-panelled door, an olive-green dental chair
+
+The original cartoon room is still there. Use **Pengaturan → Ruangan: Kartun (lama)**, or set `roomStyle: 'kartun'` in `DEFAULTS` in `src/game/config.js` to make it the default for every headset.
 
 ## Dekorasi
 
@@ -165,7 +177,8 @@ src/game/cases.js  treatments, steps, patient names and looks, all the lines the
 src/game/character.js  cartoon people: body, face, expressions, walk/sit/wave/cheer...
 src/game/mouth.js  what the teeth look like for each treatment, and how they change
 src/game/tools.js  the 13 instruments and the tray
-src/game/room.js   the treatment room, chair, door, lamp
+src/game/room.js   the cartoon treatment room (Ruangan: Kartun), chair, door, lamp
+src/game/room-fdc.js  the Klinik FDC room, modelled on a real FDC treatment room (Ruangan: Klinik FDC)
 src/game/effects.js  sparkles, tears, steam, hearts
 src/game/sfx.js    synthesized sounds (drill, scaler, suction, ouch, door...)
 src/game/music.js  cheerful background music, synthesized live (F major, 116 BPM)

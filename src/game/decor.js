@@ -120,11 +120,12 @@ export class Decor {
 
   apply() {
     const m = this.room.mats;
-    m.paint.color.set(this.current('wall').color);
+    const wall = this.current('wall');
+    m.paint.color.set(this.room.wallColor ? this.room.wallColor(wall) : wall.color);
     const u = this.current('uniform');
     this.assistant.topMat.color.set(u.top);
     this.assistant.botMat.color.set(u.bottom);
-    const c = this.current('chair');
+    const c = this.room.chairColors ? this.room.chairColors(this.current('chair')) : this.current('chair');
     this.room.chair.padMat.color.set(c.pad);
     this.room.chair.accentMat.color.set(c.accent);
     const pl = this.state.use.plants;

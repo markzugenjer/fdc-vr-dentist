@@ -143,6 +143,13 @@ export function buildBoards(app, parent) {
     },
   };
   out.decor.apply();
+  // Klinik FDC room: its mural already carries the FDC logo, and the counter fills the back-left corner
+  out.setRoomStyle = (style) => {
+    const fdc = style !== 'kartun';
+    sign.mesh.visible = !fdc;
+    balloons.position.set(fdc ? -1.45 : -2.05, 0, fdc ? -2.75 : -2.4);
+    trophy.position.set(fdc ? -2.0 : -1.05, 1.77, ROOM.minZ + 0.12); // on the black shelf left of the mural logo
+  };
   return out;
 }
 

@@ -7,6 +7,7 @@ import { store } from '../core/util.js';
  * To change the defaults for everyone (for an event, say), edit DEFAULTS and push.
  */
 export const DEFAULTS = {
+  roomStyle: 'fdc', // the treatment room: 'fdc' = modelled on a real FDC clinic room | 'kartun' = the original cartoon room
   patientsPerShift: 5, // patients in one "Mulai kerja" round
   eventMinutes: 3, // length of a "Mode Event" round
   patience: 'normal', // how fast patients get bored: santai | normal | cepat
@@ -45,6 +46,10 @@ export const CHOICES = {
     { id: 'santai', label: 'Santai', mult: 1.6 },
     { id: 'normal', label: 'Normal', mult: 1 },
     { id: 'cepat', label: 'Cepat bosan', mult: 0.65 },
+  ],
+  roomStyle: [
+    { id: 'fdc', label: 'Klinik FDC' },
+    { id: 'kartun', label: 'Kartun (lama)' },
   ],
   hearts: [2, 3, 5],
   hints: [0, 1, 3, 5, 10],

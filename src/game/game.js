@@ -396,14 +396,53 @@ export function createClinic(app) {
   rectGlass.position.z = 0.014;
   rectMirror.add(rectFrame, rectGlass);
   decoMirror.add(rectMirror);
+  // the Klinik FDC look: an arched mirror with a slim brass frame over the sink, with a soft
+  // painted "reflection" (a real reflection would mean drawing the room twice: too slow for Quest)
+  const archShape = (w, h) => {
+    const r = w / 2;
+    const sh = new THREE.Shape();
+    sh.moveTo(-r, -h / 2);
+    sh.lineTo(r, -h / 2);
+    sh.lineTo(r, h / 2 - r);
+    sh.absarc(0, h / 2 - r, r, 0, Math.PI, false);
+    sh.lineTo(-r, -h / 2);
+    return sh;
+  };
+  const AW = 0.46;
+  const AH = 0.62;
+  const archMirror = new THREE.Group();
+  const outer = archShape(AW + 0.04, AH + 0.04);
+  outer.holes.push(archShape(AW, AH));
+  const archFrame = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(outer, { depth: 0.022, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 2, curveSegments: 24 }),
+    new THREE.MeshStandardMaterial({ color: '#dcb978', metalness: 0.35, roughness: 0.35, emissive: '#5a4320', emissiveIntensity: 0.35 }),
+  );
+  const archGeo = new THREE.ShapeGeometry(archShape(AW, AH), 24);
+  {
+    // map the shape's metres to 0..1 UVs for the reflection texture
+    const pa = archGeo.attributes.position;
+    const uv = archGeo.attributes.uv;
+    for (let i = 0; i < pa.count; i++) uv.setXY(i, pa.getX(i) / AW + 0.5, pa.getY(i) / AH + 0.5);
+  }
+  const archGlass = new THREE.Mesh(archGeo, new THREE.MeshStandardMaterial({
+    map: mirrorTexture(), roughness: 0.06, metalness: 0.1, emissive: '#ffffff', emissiveMap: null, emissiveIntensity: 0,
+  }));
+  archGlass.material.emissiveMap = archGlass.material.map;
+  archGlass.material.emissiveIntensity = 0.45; // stays bright like a mirror, even in the corner
+  archGlass.position.z = 0.016;
+  archMirror.add(archFrame, archGlass);
+  decoMirror.add(archMirror);
   function placeDecoMirror() {
     const spot = room.decoMirror || { x: -2.36, y: 1.55, z: -2.15, ry: Math.PI / 2, look: 'oval' };
     decoMirror.position.set(spot.x, spot.y, spot.z);
     decoMirror.rotation.y = spot.ry;
     const rect = spot.look === 'rect';
+    const arch = spot.look === 'arch';
     rectMirror.visible = rect;
-    frameM.visible = glassM.visible = !rect;
-    decoLabel.mesh.position.y = rect ? -0.47 : -0.5;
+    archMirror.visible = arch;
+    frameM.visible = glassM.visible = !rect && !arch;
+    decoLabel.mesh.position.y = spot.labelY ?? (rect ? -0.47 : -0.5);
+    decoLabel.mesh.position.z = arch ? 0.03 : 0;
   }
   const decoLabel = makePanel(0.36, 0.09, (c, W, H) => {
     card(c, W, H, { r: 0.45, fill: P.pinkSoft, stroke: P.pinkDeep, lw: 6 });
@@ -415,6 +454,7 @@ export function createClinic(app) {
   placeDecoMirror();
   app.addTarget(glassM, { onSelect: () => openShop() });
   app.addTarget(rectGlass, { onSelect: () => openShop() });
+  app.addTarget(archGlass, { onSelect: () => openShop() });
   const bNext = btn('Pasien berikutnya', 'mint', -0.22, ROW1, () => nextPatient(), 0.52);
   const bAgain = btn('Main lagi', 'mint', -0.43, ROW1, () => start(mode === 'tutorial' ? 'shift' : mode), 0.4);
   const bMenu = btn('Menu', 'light', 0, ROW1, () => toTitle(), 0.4);
@@ -1994,3 +2034,48 @@ function drawToothLogo(c, x, y, s) {
   c.beginPath(); c.arc(0, -s * 0.08, s * 0.16, 0.3, Math.PI - 0.3); c.stroke();
   c.restore();
 }
+
+/** A painted mirror "reflection": soft sage room, a bright doorway, the cove light and two glass streaks. */
+function mirrorTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 340;
+  const g = c.getContext('2d');
+  const w = c.width;
+  const h = c.height;
+  const bg = g.createLinearGradient(0, 0, 0, h);
+  bg.addColorStop(0, '#e9eee6');
+  bg.addColorStop(0.45, '#cbd8c3');
+  bg.addColorStop(1, '#b4c6aa');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, w, h);
+  g.filter = 'blur(6px)';
+  g.fillStyle = 'rgba(255,250,236,0.9)'; // warm cove light along the ceiling
+  g.fillRect(-10, h * 0.1, w + 20, 14);
+  g.fillStyle = 'rgba(255,255,255,0.75)'; // the white door opposite
+  g.fillRect(w * 0.58, h * 0.3, w * 0.26, h * 0.62);
+  g.fillStyle = 'rgba(70,112,64,0.35)'; // a hint of the jungle wall
+  g.fillRect(-10, h * 0.42, w * 0.35, h * 0.6);
+  g.fillStyle = 'rgba(245,245,240,0.8)'; // floor tiles
+  g.fillRect(-10, h * 0.9, w + 20, h * 0.2);
+  g.filter = 'none';
+  const streak = (x, wd, a) => {
+    const s = g.createLinearGradient(x, 0, x + wd, 0);
+    s.addColorStop(0, 'rgba(255,255,255,0)');
+    s.addColorStop(0.5, `rgba(255,255,255,${a})`);
+    s.addColorStop(1, 'rgba(255,255,255,0)');
+    g.save();
+    g.translate(w / 2, h / 2);
+    g.rotate(-0.5);
+    g.translate(-w / 2, -h / 2);
+    g.fillStyle = s;
+    g.fillRect(x, -h, wd, h * 3);
+    g.restore();
+  };
+  streak(w * 0.1, 46, 0.55);
+  streak(w * 0.32, 18, 0.4);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+

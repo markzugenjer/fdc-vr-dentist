@@ -49,9 +49,16 @@ export function buildFdcRoom() {
     pinkTowel: s('#e46fae', { roughness: 0.9 }),
     yellowTowel: s('#e7e04a', { roughness: 0.9 }),
     blue: s('#2a8fb8', { roughness: 0.4 }),
-    leaf: s('#5f8a4a', { roughness: 0.8 }),
-    leafDark: s('#46703a', { roughness: 0.8 }),
+    leaf: s('#5f9a4c', { roughness: 0.55, side: THREE.DoubleSide }),
+    leafDark: s('#3f7438', { roughness: 0.55, side: THREE.DoubleSide }),
+    leafLight: s('#86b45c', { roughness: 0.55, side: THREE.DoubleSide }),
+    stem: s('#5c7a3a', { roughness: 0.7 }),
     pot: s('#2f3133', { roughness: 0.6 }),
+    potWhite: s('#f4f1ea', { roughness: 0.45 }),
+    potTerra: s('#c9805a', { roughness: 0.8 }),
+    soil: s('#4a3426', { roughness: 1 }),
+    basin: new THREE.MeshStandardMaterial({ map: basinTexture(), metalness: 0.55, roughness: 0.32 }),
+    tiles: new THREE.MeshStandardMaterial({ map: tileTexture(), roughness: 0.25 }),
     cove: new THREE.MeshBasicMaterial({ color: '#ffe2a8' }),
     down: new THREE.MeshBasicMaterial({ color: '#fffaf0' }),
   };
@@ -172,23 +179,25 @@ export function buildFdcRoom() {
     const z = stZ + 0.43 + k * 0.33;
     put(still, box(0.02, 0.7, 0.31, 0.005), m.oakDark, cabX + 0.305, 0.45, z);
     put(still, new THREE.CylinderGeometry(0.012, 0.012, 0.02, 8), m.black, cabX + 0.32, 0.72, z + (k ? -0.12 : 0.12), 0, 0, Math.PI / 2);
-    put(still, box(0.015, 0.3, 0.22, 0.004), k ? m.pinkTowel : m.yellowTowel, cabX + 0.322, 0.62, z);
+    towel(still, m, k ? m.pinkTowel : m.yellowTowel, cabX + 0.33, 0.76, z);
   }
   // double sink, tap, soap
   const sinkZ = stZ + 0.6;
   put(still, box(0.44, 0.03, 0.62, 0.02), m.white, cabX + 0.02, 0.905, sinkZ);
-  for (const k of [-1, 1]) put(still, new THREE.BoxGeometry(0.34, 0.012, 0.24), m.steel, cabX + 0.02, 0.92, sinkZ + k * 0.14);
-  put(still, new THREE.CylinderGeometry(0.012, 0.012, 0.3, 8), m.steel, cabX - 0.2, 1.05, sinkZ);
-  put(still, new THREE.CylinderGeometry(0.01, 0.01, 0.16, 8), m.steel, cabX - 0.13, 1.19, sinkZ, 0, 0, Math.PI / 2);
-  put(still, new THREE.CylinderGeometry(0.03, 0.03, 0.17, 10), m.white, cabX - 0.2, 0.99, sinkZ + 0.36);
-  put(still, box(0.1, 0.17, 0.08, 0.02), m.white, minX + 0.03, 1.35, sinkZ + 0.3); // wall soap dispenser
+  sink(still, m, cabX + 0.02, 0.92, sinkZ);
+  // soap pump bottle and the wall soap dispenser beside the mirror
+  put(still, new THREE.CylinderGeometry(0.03, 0.032, 0.13, 14), m.white, cabX - 0.17, 0.985, sinkZ + 0.36);
+  put(still, new THREE.CylinderGeometry(0.008, 0.008, 0.04, 8), m.steel, cabX - 0.17, 1.07, sinkZ + 0.36);
+  put(still, new THREE.BoxGeometry(0.05, 0.012, 0.012), m.steel, cabX - 0.15, 1.09, sinkZ + 0.36);
+  put(still, box(0.1, 0.17, 0.08, 0.02), m.white, minX + 0.05, 1.3, sinkZ + 0.4); // wall soap dispenser
   // things on the worktop: a drawer organiser, tissue box, bottles
   put(still, box(0.22, 0.2, 0.36, 0.01), m.black, cabX - 0.12, 1.0, cab0 + 0.25);
   for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) put(still, new THREE.BoxGeometry(0.01, 0.045, 0.07), m.steel, cabX - 0.005, 0.94 + r * 0.06, cab0 + 0.12 + c * 0.085);
   put(still, box(0.14, 0.08, 0.2, 0.01), m.cream, cabX - 0.05, 0.94, cab0 + 0.65);
   for (let k = 0; k < 3; k++) put(still, new THREE.CylinderGeometry(0.03, 0.03, 0.18 + k * 0.03, 10), [m.white, m.blue, m.white][k], cabX - 0.15, 0.99 + k * 0.015, cab0 + 1.75 + k * 0.08);
-  // glass splashback (a faint lighter band) and the oak shelf above
-  put(still, new THREE.BoxGeometry(0.01, 0.75, cabL), s('#bfcdb2', { roughness: 0.2 }), minX + 0.006, 1.27, cabZ);
+  // white subway-tile splashback (the mirror hangs on it above the sink) and the oak shelf above
+  m.tiles.map.repeat.set(cabL / 0.3, 0.8 / 0.3);
+  put(still, new THREE.BoxGeometry(0.012, 0.8, cabL), m.tiles, minX + 0.006, 1.3, cabZ);
   put(still, box(0.24, 0.04, cabL - 0.1, 0.006), m.oak, minX + 0.12, 1.72, cabZ);
   // the two FDC art prints on the shelf
   const prints = [
@@ -201,8 +210,10 @@ export function buildFdcRoom() {
     pm.rotation.z = 0;
   }
   // little things on the shelf: plants, a triangle-pattern cup, a box
-  plant(still, m, minX + 0.13, 1.74, cab0 + 0.15, 0.6);
-  plant(still, m, minX + 0.13, 1.74, cab1 - 0.15, 0.55);
+  plant(still, m, minX + 0.13, 1.74, cab0 + 0.15, 0.6, { kind: 'snake', pot: m.potWhite });
+  plant(still, m, minX + 0.13, 1.74, cab1 - 0.17, 0.55, { kind: 'trail', pot: m.potTerra, dir: 0 });
+  // a big leafy floor plant on the empty wall between the counter and the big print
+  plant(still, m, minX + 0.32, 0, -0.45, 1.9, { kind: 'tall', pot: m.potWhite });
   put(still, new THREE.CylinderGeometry(0.05, 0.05, 0.09, 12), m.cream, minX + 0.13, 1.785, cab0 + 0.88);
   // curing light on a stand at the front of the counter, the yellow biohazard box
   const lampBase = new THREE.Vector3(cabX + 0.18, 0, cab1 + 0.25);
@@ -269,7 +280,7 @@ export function buildFdcRoom() {
     put(still, new THREE.BoxGeometry(0.02, 0.24, 0.19), m.black, maxX - 0.08, 1.89, p.z, 0, 0, -0.06);
     put(group, new THREE.PlaneGeometry(0.15, 0.2), new THREE.MeshStandardMaterial({ map: p.tex, roughness: 0.6 }), maxX - 0.093, 1.89, p.z, 0, -Math.PI / 2, 0);
   }
-  plant(still, m, maxX - 0.12, 1.77, -1.68, 0.5);
+  plant(still, m, maxX - 0.12, 1.77, -1.68, 0.5, { kind: 'trail', pot: m.potWhite, dir: Math.PI });
   // the AC unit, high on the right wall
   put(still, box(0.22, 0.28, 0.9, 0.04), m.white, maxX - 0.12, 2.48, -1.65);
   put(still, new THREE.BoxGeometry(0.02, 0.03, 0.8), s('#d6dadc'), maxX - 0.235, 2.38, -1.65);
@@ -334,10 +345,10 @@ export function buildFdcRoom() {
   const posterMesh = put(group, new THREE.PlaneGeometry(0.6, 0.8), new THREE.MeshBasicMaterial({ map: posterTex }), minX + 0.033, 1.6, 0.35, 0, Math.PI / 2);
   // a black floating shelf on the front wall with a small plant
   put(still, box(0.7, 0.035, 0.2, 0.006), m.black, 0.9, 1.65, maxZ - 0.1);
-  plant(still, m, 0.75, 1.67, maxZ - 0.11, 0.5);
+  plant(still, m, 0.75, 1.67, maxZ - 0.11, 0.5, { kind: 'leafy', pot: m.potTerra });
   // a shelf on the mural for the trophy (Dekorasi unlock)
   put(still, box(0.55, 0.035, 0.2, 0.006), m.black, -1.95, 1.755, minZ + 0.1);
-  plant(still, m, -1.78, 1.775, minZ + 0.1, 0.45);
+  plant(still, m, -1.78, 1.775, minZ + 0.1, 0.45, { kind: 'snake', pot: m.pot });
 
   // a clock on the right wall (the game's clinic time)
   put(still, new THREE.CylinderGeometry(0.18, 0.18, 0.035, 32), m.white, maxX - 0.02, 2.05, -0.2, 0, 0, Math.PI / 2);
@@ -375,8 +386,8 @@ export function buildFdcRoom() {
     mats: m,
     poster: posterMesh,
     style: 'fdc',
-    // where the Dekorasi mirror hangs: a slim black-framed wall mirror between the counter and the big print
-    decoMirror: { x: minX + 0.03, y: 1.55, z: -0.5, ry: Math.PI / 2, look: 'rect' },
+    // where the Dekorasi mirror hangs: an arched mirror on the tiles above the sink
+    decoMirror: { x: minX + 0.026, y: 1.33, z: sinkZ, ry: Math.PI / 2, look: 'arch', labelY: 0.21 },
     bounds: FDC_ROOM,
     // Dekorasi's first choices map to the real clinic's look
     wallColor: (opt) => (opt.id === 'cream' ? SAGE : opt.color),
@@ -401,15 +412,202 @@ export function buildFdcRoom() {
 }
 
 // =================================================================== furniture helpers
-function plant(parent, m, x, y, z, k = 1) {
-  put(parent, new THREE.CylinderGeometry(0.06 * k * 1.6, 0.05 * k * 1.6, 0.14 * k * 1.6, 12), m.pot, x, y + 0.07 * k * 1.6, z);
-  for (let i = 0; i < 9; i++) {
-    const a = i * 2.4;
-    const r = (0.02 + (i % 3) * 0.03) * k * 1.6;
-    const leaf = put(parent, new THREE.ConeGeometry(0.03 * k * 1.6, 0.22 * k * 1.6, 4), i % 2 ? m.leaf : m.leafDark,
-      x + Math.cos(a) * r, y + (0.2 + (i % 3) * 0.04) * k * 1.6, z + Math.sin(a) * r, Math.sin(a) * 0.5, 0, Math.cos(a) * 0.5);
-    void leaf;
+/**
+ * A potted plant. kind: 'leafy' (broad arching leaves), 'snake' (tall upright blades) or
+ * 'trail' (a pothos with vines hanging over the shelf edge toward `dir`). All parts go into the
+ * merged still group, so a plant costs triangles but no extra draw calls.
+ */
+function plant(parent, m, x, y, z, k = 1, { kind = 'leafy', pot = m.pot, dir = 0 } = {}) {
+  const S = k * 1.6;
+  const rnd = seeded(Math.round((x * 31 + z * 17 + y * 7) * 1000));
+  // ceramic pot (lathe profile with a rim) and soil
+  const ph = 0.13 * S;
+  const pr = 0.065 * S;
+  put(parent, cachedGeo('pot', () => new THREE.LatheGeometry([
+    new THREE.Vector2(0.0, 0), new THREE.Vector2(0.72, 0), new THREE.Vector2(0.8, 0.08), new THREE.Vector2(0.92, 0.82),
+    new THREE.Vector2(1.0, 0.86), new THREE.Vector2(1.0, 1.0), new THREE.Vector2(0.9, 1.0), new THREE.Vector2(0.88, 0.9),
+  ], 20)), pot, x, y, z).scale.set(pr, ph, pr);
+  put(parent, cachedGeo('soil', () => new THREE.CircleGeometry(1, 16)), m.soil, x, y + ph * 0.9, z, -Math.PI / 2).scale.setScalar(pr * 0.88);
+  const top = y + ph * 0.9;
+  const mats = [m.leaf, m.leafDark, m.leafLight];
+  const addLeaf = (lx, ly, lz, len, wid, tilt, yaw, bend, mat) => {
+    const l = new THREE.Mesh(leafGeo(), mat);
+    l.position.set(lx, ly, lz);
+    l.rotation.order = 'YXZ';
+    l.rotation.set(tilt, yaw, 0);
+    l.scale.set(wid, len, len * bend);
+    parent.add(l);
+  };
+  if (kind === 'snake') {
+    for (let i = 0; i < 8; i++) {
+      const a = i * 2.39 + rnd();
+      const r = pr * (0.15 + 0.45 * rnd());
+      addLeaf(x + Math.cos(a) * r, top - 0.005, z + Math.sin(a) * r, (0.3 + 0.2 * rnd()) * S, 0.045 * S, 0.08 + 0.18 * rnd(), -a + Math.PI / 2, 0.15, i % 3 === 1 ? m.leafLight : m.leafDark);
+    }
+    return;
   }
+  if (kind === 'tall') {
+    // a big floor plant: leaves on stems of different heights, so it reads as a full bush
+    for (let i = 0; i < 26; i++) {
+      const a = i * 2.39 + rnd() * 0.6;
+      const hgt = (0.08 + 0.42 * Math.pow(rnd(), 0.8)) * S;
+      const out = (0.03 + 0.08 * rnd()) * S;
+      const ex = x + Math.cos(a) * out;
+      const ez = z + Math.sin(a) * out;
+      rod(parent, new THREE.Vector3(x + Math.cos(a) * pr * 0.3, top, z + Math.sin(a) * pr * 0.3), new THREE.Vector3(ex, top + hgt, ez), 0.004 * S, m.stem);
+      const len = (0.11 + 0.05 * rnd()) * S;
+      addLeaf(ex, top + hgt, ez, len, len * 0.72, 0.5 + 0.9 * (out / (0.11 * S)) + rnd() * 0.2, -a + Math.PI / 2, 0.4, mats[i % 3]);
+    }
+    return;
+  }
+  const n = kind === 'trail' ? 9 : 13;
+  for (let i = 0; i < n; i++) {
+    const a = i * 2.39 + rnd() * 0.5;
+    const tilt = 0.35 + 0.75 * (i / n) + rnd() * 0.15; // inner leaves stand up, outer ones arch out
+    const len = (kind === 'trail' ? 0.1 : 0.15 + 0.06 * rnd()) * S;
+    const sy = top + (kind === 'leafy' ? 0.06 * S * (1 - i / n) : 0);
+    // a short stem then the leaf
+    const dx = Math.cos(a) * Math.sin(tilt) * 0.05 * S;
+    const dz = Math.sin(a) * Math.sin(tilt) * 0.05 * S;
+    if (kind === 'leafy') rod(parent, new THREE.Vector3(x, top - 0.01, z), new THREE.Vector3(x + dx, sy, z + dz), 0.004 * S, m.stem);
+    addLeaf(x + dx, sy, z + dz, len, len * 0.62, tilt, -a + Math.PI / 2, 0.35, mats[i % 3]);
+  }
+  if (kind === 'trail') {
+    // three vines hanging down over the shelf edge toward the room
+    for (let v = 0; v < 3; v++) {
+      const off = (v - 1) * 0.045 * S;
+      const drop = (0.25 + 0.2 * rnd()) * S;
+      const ax = Math.cos(dir);
+      const az = Math.sin(dir);
+      const px = -az;
+      const pz = ax;
+      const pts = [];
+      for (let t = 0; t <= 1.0001; t += 0.25) {
+        const out = pr * 0.9 + 0.05 * S * Math.min(1, t * 2.5);
+        pts.push(new THREE.Vector3(x + ax * out + px * off, top - t * drop, z + az * out + pz * off));
+      }
+      for (let q = 0; q < pts.length - 1; q++) rod(parent, pts[q], pts[q + 1], 0.0025 * S, m.stem);
+      for (let q = 1; q < 7; q++) {
+        const t = q / 7;
+        const lx = x + ax * (pr * 0.9 + 0.05 * S) + px * off;
+        const lz = z + az * (pr * 0.9 + 0.05 * S) + pz * off;
+        const side = q % 2 ? 1 : -1;
+        addLeaf(lx + px * side * 0.012 * S, top - t * drop, lz + pz * side * 0.012 * S, 0.06 * S, 0.045 * S, 2.1 + rnd() * 0.4, -dir + Math.PI / 2 + side * 0.9, 0.3, mats[(q + v) % 3]);
+      }
+    }
+  }
+}
+
+const geoCache = new Map();
+function cachedGeo(key, make) { if (!geoCache.has(key)) geoCache.set(key, make()); return geoCache.get(key); }
+function seeded(seed) { let v = seed >>> 0 || 1; return () => { v = (v * 1664525 + 1013904223) >>> 0; return v / 4294967296; }; }
+
+/** One leaf, 1 m long along +y and 1 m wide, folded along the midrib and curving forward (+z). */
+function leafGeo() {
+  return cachedGeo('leaf', () => {
+    const N = 8;
+    const pos = [];
+    const idx = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      const w = 0.5 * Math.sin(Math.PI * Math.pow(t, 0.75)) * (1 - 0.15 * t); // rounded base, pointed tip
+      const bend = t * t; // curves forward toward the tip (scaled per leaf)
+      pos.push(-w, t, bend - 0.06 * w, 0, t, bend + 0.04 * (1 - t), w, t, bend - 0.06 * w);
+      if (i < N) {
+        const a = i * 3;
+        idx.push(a, a + 3, a + 1, a + 1, a + 3, a + 4, a + 1, a + 4, a + 2, a + 2, a + 4, a + 5);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  });
+}
+
+/** A hand towel hanging over a slim steel bar on a cabinet door. */
+function towel(parent, m, mat, x, y, z) {
+  put(parent, new THREE.CylinderGeometry(0.008, 0.008, 0.26, 8), m.steel, x + 0.01, y, z, Math.PI / 2);
+  for (const zz of [-0.12, 0.12]) put(parent, new THREE.BoxGeometry(0.02, 0.012, 0.012), m.steel, x - 0.005, y, z + zz);
+  put(parent, new THREE.CylinderGeometry(0.016, 0.016, 0.22, 10), mat, x + 0.01, y + 0.004, z, Math.PI / 2); // the fold over the bar
+  put(parent, new RoundedBoxGeometry(0.018, 0.26, 0.22, 2, 0.008), mat, x + 0.022, y - 0.13, z); // front half
+  put(parent, new RoundedBoxGeometry(0.014, 0.2, 0.22, 2, 0.006), mat, x - 0.002, y - 0.1, z); // back half
+  put(parent, new THREE.BoxGeometry(0.004, 0.025, 0.222), m.white, x + 0.032, y - 0.21, z); // woven stripe
+}
+
+/** Double steel sink set into the white top: dished basins with drains, gooseneck tap with a lever. */
+function sink(parent, m, x, y, z) {
+  for (const k of [-1, 1]) {
+    const bz = z + k * 0.145;
+    put(parent, new THREE.PlaneGeometry(0.34, 0.25), m.basin, x, y + 0.0015, bz, -Math.PI / 2, 0, Math.PI / 2);
+    // rim
+    for (const e of [-1, 1]) {
+      put(parent, new THREE.BoxGeometry(0.35, 0.008, 0.01), m.steel, x, y + 0.003, bz + e * 0.128);
+      put(parent, new THREE.BoxGeometry(0.01, 0.008, 0.26), m.steel, x + e * 0.172, y + 0.003, bz);
+    }
+  }
+  // gooseneck tap at the back, between the basins, arching over toward the room
+  const bx = x - 0.2;
+  put(parent, new THREE.CylinderGeometry(0.022, 0.026, 0.05, 14), m.steel, bx, y + 0.025, z);
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(bx, y + 0.05, z), new THREE.Vector3(bx, y + 0.22, z), new THREE.Vector3(bx + 0.03, y + 0.3, z),
+    new THREE.Vector3(bx + 0.1, y + 0.29, z), new THREE.Vector3(bx + 0.13, y + 0.22, z),
+  ]);
+  parent.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.011, 8), m.steel));
+  put(parent, new THREE.CylinderGeometry(0.013, 0.011, 0.025, 10), m.steel, bx + 0.13, y + 0.205, z);
+  // lever handle
+  put(parent, new THREE.BoxGeometry(0.012, 0.012, 0.09), m.steel, bx + 0.01, y + 0.1, z + 0.05, 0.4);
+}
+
+function basinTexture() {
+  return canvasTex(256, 192, (g, w, h) => {
+    // brushed steel bowl: light rim, darker deeper middle, a drain and a soft highlight
+    const r = g.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w * 0.62);
+    r.addColorStop(0, '#7e878d');
+    r.addColorStop(0.55, '#a7b0b5');
+    r.addColorStop(1, '#dfe4e6');
+    g.fillStyle = r;
+    g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(255,255,255,0.08)';
+    for (let i = 0; i < h; i += 3) { g.beginPath(); g.moveTo(0, i); g.lineTo(w, i + 6); g.stroke(); }
+    g.strokeStyle = 'rgba(40,46,50,0.35)';
+    g.lineWidth = 3;
+    g.strokeRect(10, 10, w - 20, h - 20);
+    g.fillStyle = '#5d656a';
+    g.beginPath(); g.arc(w / 2, h / 2, 14, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#c3cacd';
+    g.beginPath(); g.arc(w / 2, h / 2, 10, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#4a5155';
+    for (let k = -1; k <= 1; k++) g.fillRect(w / 2 - 7, h / 2 + k * 4 - 1, 14, 2);
+    const hl = g.createLinearGradient(0, 0, w, h);
+    hl.addColorStop(0.2, 'rgba(255,255,255,0)');
+    hl.addColorStop(0.3, 'rgba(255,255,255,0.25)');
+    hl.addColorStop(0.4, 'rgba(255,255,255,0)');
+    g.fillStyle = hl;
+    g.fillRect(0, 0, w, h);
+  });
+}
+
+function tileTexture() {
+  // white subway tiles (one texture repeat = 30 x 30 cm: 4 rows of 2 bricks, offset)
+  return canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#d7d9d6';
+    g.fillRect(0, 0, w, h);
+    const rows = 4;
+    const th = h / rows;
+    for (let r = 0; r < rows; r++) {
+      const off = r % 2 ? w / 4 : 0;
+      for (let c = -1; c < 3; c++) {
+        const x0 = c * (w / 2) + off;
+        const gr = g.createLinearGradient(0, r * th, 0, (r + 1) * th);
+        gr.addColorStop(0, '#ffffff');
+        gr.addColorStop(1, '#f1f2ef');
+        g.fillStyle = gr;
+        g.fillRect(x0 + 2, r * th + 2, w / 2 - 4, th - 4);
+      }
+    }
+  }, [1, 1]);
 }
 
 function blackChair(parent, m, x, z, yaw) {

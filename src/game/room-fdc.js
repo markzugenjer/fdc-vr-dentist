@@ -228,18 +228,25 @@ export function buildFdcRoom() {
   // ------------------------------------------------------------------ the dental chair (olive green, cream body) and its unit
   const chair = buildFdcChair(m, s);
   group.add(chair.group);
-  // the chair's light: a cream post behind the headrest, an arm, and an oval reflector head
-  const pole = new THREE.Vector3(-0.62, 0, -1.25);
+  // the chair's light: a cream post well behind the headrest (behind the menu panels), and an arm
+  // with an oval reflector head. The arm swings over the patient during treatment and parks behind
+  // the post on the menus, so it never sits between the player and a panel.
+  const pole = new THREE.Vector3(-0.62, 0, -1.62);
   put(still, box(0.16, 0.08, 0.16, 0.03), m.cream, pole.x, 0.04, pole.z);
   put(still, new THREE.CylinderGeometry(0.035, 0.045, 2.0, 14), m.cream, pole.x, 1.0, pole.z);
   put(still, new THREE.SphereGeometry(0.05, 12, 10), m.cream, pole.x, 2.02, pole.z);
+  const pivot = new THREE.Vector3(pole.x, 2.02, pole.z);
+  const lampArm = new THREE.Group();
+  lampArm.position.copy(pivot);
+  group.add(lampArm);
   const lampHead = new THREE.Group();
-  lampHead.position.set(-0.22, 1.98, -0.85);
+  lampHead.position.set(-0.22, 1.98, -0.85).sub(pivot);
   lampHead.rotation.set(-0.45, 0.35, 0);
-  const elbow = new THREE.Vector3(-0.42, 2.12, -1.0);
-  rod(still, new THREE.Vector3(pole.x, 2.02, pole.z), elbow, 0.022, m.cream);
-  rod(still, elbow, lampHead.position.clone().add(new THREE.Vector3(0, 0.07, 0)), 0.02, m.cream);
-  still.add(lampHead);
+  const elbow = new THREE.Vector3(-0.36, 2.14, -1.18).sub(pivot);
+  rod(lampArm, new THREE.Vector3(), elbow, 0.022, m.cream);
+  rod(lampArm, elbow, lampHead.position.clone().add(new THREE.Vector3(0, 0.07, 0)), 0.02, m.cream);
+  lampArm.add(lampHead);
+  const LAMP_PARK = 2.6; // radians the arm swings round to park behind the post
   const reflector = put(lampHead, new THREE.SphereGeometry(0.16, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), m.cream, 0, 0, 0, Math.PI);
   reflector.scale.set(1.25, 0.35, 0.75);
   put(lampHead, new THREE.CircleGeometry(0.15, 24), b.lampGlow, 0, -0.002, 0, Math.PI / 2).scale.set(1.2, 0.7, 1);
@@ -369,12 +376,13 @@ export function buildFdcRoom() {
   const warm = new THREE.PointLight('#ffd9a0', 0.8, 4.5, 1.6);
   warm.position.set(-0.6, 2.55, minZ + 0.4);
   const spot = new THREE.SpotLight('#fff6e0', 3.2, 2.4, 0.5, 0.6, 1.2);
-  spot.position.copy(lampHead.position);
+  spot.position.set(-0.22, 1.98, -0.85);
   spot.target.position.set(-0.1, 0.95, -0.74);
   group.add(hemi, sun, warm, spot, spot.target);
 
   mergeStill(still);
 
+  let lampPark = 0;
   const hemiDay = hemi.intensity;
   const sunDay = sun.intensity;
   let clockHours = 9.5;
@@ -407,6 +415,12 @@ export function buildFdcRoom() {
       door.amount += (door.want - door.amount) * (1 - Math.exp(-dt * 4));
       door.hinge.rotation.y = -door.amount * 1.45;
       chair.update(dt);
+      // chair light: parked on the menus (chair laid flat), over the patient otherwise
+      const park = chair.flat > 0.5 ? 1 : 0;
+      lampPark += (park - lampPark) * (1 - Math.exp(-dt * (dt >= 1 ? 50 : 2.5)));
+      const k = lampPark * lampPark * (3 - 2 * lampPark);
+      lampArm.rotation.y = k * LAMP_PARK;
+      spot.intensity = 3.2 * (1 - k);
     },
   };
 }

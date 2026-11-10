@@ -36,7 +36,7 @@ export function wrap(ctx, str, maxWidth) {
 }
 
 /** Rounded card filling the whole canvas. */
-export function card(ctx, W, H, { fill = 'rgba(255,255,255,0.96)', stroke = null, r = 0.12, lw = 8 } = {}) {
+export function card(ctx, W, H, { fill = '#ffffff', stroke = null, r = 0.12, lw = 8 } = {}) {
   roundRect(ctx, lw / 2 + 2, lw / 2 + 2, W - lw - 4, H - lw - 4, Math.min(W, H) * r);
   ctx.fillStyle = fill;
   ctx.fill();
@@ -105,6 +105,9 @@ export function makeButton(app, { label: initialLabel, sub = '', w = 1.0, h = 0.
     onSelect() { app.sfx.play('click'); onSelect?.(); },
     setLabel(next) { if (next !== label) { label = next; panel.redraw(); } },
   });
+  // Buttons are always drawn after the panels they sit on. Without this the transparent sort can
+  // draw a panel over a button (it then shows the room behind it, like a see-through hole).
+  mesh.renderOrder = 2;
   // Buttons grow a little when hovered (animated by the game loop through tickButtons).
   mesh.userData.button = true;
   mesh.userData.pop = 0;

@@ -241,11 +241,17 @@ export function buildRoom() {
   const pole = new THREE.Vector3(-0.75, 0, -1.65);
   put(still, new THREE.CylinderGeometry(0.12, 0.14, 0.05, 20), m.white, pole.x, 0.025, pole.z);
   put(still, new THREE.CylinderGeometry(0.025, 0.025, 2.2, 12), m.white, pole.x, 1.1, pole.z);
+  // the arm swings over the patient during treatment and parks behind the pole on the menus
+  const pivot = new THREE.Vector3(pole.x, 2.18, pole.z);
+  const lampArm = new THREE.Group();
+  lampArm.position.copy(pivot);
+  group.add(lampArm);
   const lampHead = new THREE.Group();
-  lampHead.position.set(-0.22, 2.05, -0.9);
+  lampHead.position.set(-0.22, 2.05, -0.9).sub(pivot);
   lampHead.rotation.set(-0.35, 0.3, 0);
-  rod(still, new THREE.Vector3(pole.x, 2.18, pole.z), lampHead.position.clone().add(new THREE.Vector3(0, 0.05, 0)), 0.018, m.white);
-  still.add(lampHead);
+  rod(lampArm, new THREE.Vector3(), lampHead.position.clone().add(new THREE.Vector3(0, 0.05, 0)), 0.018, m.white);
+  lampArm.add(lampHead);
+  let lampPark = 0;
   put(lampHead, box(0.3, 0.06, 0.16, 0.025), m.mint, 0, 0, 0);
   put(lampHead, new THREE.PlaneGeometry(0.25, 0.11), m.lampGlow, 0, -0.031, 0, Math.PI / 2);
 
@@ -260,7 +266,7 @@ export function buildRoom() {
   const sun = new THREE.DirectionalLight('#fff7ee', 1.25);
   sun.position.set(-2, 3.5, 1.5);
   const spot = new THREE.SpotLight('#fff6e0', 3.2, 2.4, 0.5, 0.6, 1.2);
-  spot.position.copy(lampHead.position);
+  spot.position.set(-0.22, 2.05, -0.9);
   spot.target.position.set(-0.1, 0.95, -0.74); // the patient's mouth
   group.add(hemi, sun, spot, spot.target);
 
@@ -303,6 +309,11 @@ export function buildRoom() {
       door.hinge.rotation.y = -door.amount * 1.45;
       chair.update(dt);
       fish.update(dt);
+      const park = chair.flat > 0.5 ? 1 : 0;
+      lampPark += (park - lampPark) * (1 - Math.exp(-dt * (dt >= 1 ? 50 : 2.5)));
+      const k = lampPark * lampPark * (3 - 2 * lampPark);
+      lampArm.rotation.y = k * 2.6;
+      spot.intensity = 3.2 * (1 - k);
     },
   };
 }

@@ -53,7 +53,7 @@ export function buildBoards(app, parent) {
   };
 
   // ------------------------------------------------------------------ score TV on the right wall
-  const tvState = { mode: null, timeLeft: 0, score: 0, combo: 1 };
+  const tvState = { mode: null, timeLeft: 0, score: 0, combo: 1, name: '' };
   const tv = makePanel(1.1, 0.66, (c, W, H) => drawTv(c, W, H, tvState), { ppm: 600 });
   const tvGroup = new THREE.Group();
   tvGroup.position.set(ROOM.maxX - 0.04, 1.5, -0.45); // under the clock, clear of the bench
@@ -248,17 +248,18 @@ function drawTv(c, W, H, s) {
   } else {
     text(c, `Bintang total: ★ ${progress.stars}`, pad, H * 0.32, { size: H * 0.075, weight: 800, color: '#ffffff' });
   }
-  // top 5 today
-  text(c, 'Terbaik hari ini', pad, H * 0.5, { size: H * 0.06, weight: 800, color: P.mint });
-  const top = progress.topToday(5);
-  if (!top.length) text(c, 'Belum ada skor. Ayo main!', pad, H * 0.61, { size: H * 0.055, color: 'rgba(255,255,255,0.7)' });
+  if (s.name && s.mode) text(c, `Dokter: ${s.name}`, pad, H * 0.44, { size: H * 0.055, weight: 800, color: P.pink, maxWidth: W - pad * 2 });
+  // today's top 10 (names), in two columns
+  text(c, 'Terbaik hari ini', pad, H * 0.55, { size: H * 0.06, weight: 800, color: P.mint });
+  const top = progress.topToday(10);
+  if (!top.length) text(c, 'Belum ada skor. Ayo main!', pad, H * 0.66, { size: H * 0.055, color: 'rgba(255,255,255,0.7)' });
   top.forEach((e, i) => {
-    const y = H * 0.61 + i * H * 0.08;
-    const time = new Date(e.at);
-    text(c, `${i + 1}.`, pad, y, { size: H * 0.055, weight: 800, color: i === 0 ? P.gold : '#ffffff' });
-    text(c, e.mode === 'event' ? 'Event 3 menit' : 'Shift', pad + W * 0.07, y, { size: H * 0.05, color: 'rgba(255,255,255,0.75)' });
-    text(c, `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`, W * 0.55, y, { size: H * 0.05, color: 'rgba(255,255,255,0.55)' });
-    text(c, `${e.score}`, W - pad, y, { size: H * 0.055, weight: 900, color: i === 0 ? P.gold : '#ffffff', align: 'right' });
+    const col = i < 5 ? 0 : 1;
+    const x0 = pad + col * (W / 2 - pad * 0.5);
+    const x1 = col ? W - pad : W / 2 - pad;
+    const y = H * 0.65 + (i % 5) * H * 0.072;
+    text(c, `${i + 1}. ${e.name || 'Dokter Tamu'}`, x0, y, { size: H * 0.05, weight: 700, color: i === 0 ? P.gold : '#ffffff', maxWidth: W * 0.3 });
+    text(c, `${e.score}`, x1, y, { size: H * 0.052, weight: 900, color: i === 0 ? P.gold : '#ffffff', align: 'right' });
   });
 }
 

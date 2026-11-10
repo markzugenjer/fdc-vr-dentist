@@ -12,6 +12,7 @@ import { progress } from './progress.js';
 import { Decor, DECOR, DECOR_ORDER } from './decor.js';
 import { config, CHOICES } from './config.js';
 import { PrizeWheel } from './wheel.js';
+import { drawLeaderboard, niceName } from './leaderboard.js';
 import { store } from '../core/util.js';
 import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, FACTS, PERSONALITIES, TOOL_HINT, PAIRS, pick } from './cases.js';
 import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from '../core/ui.js';
@@ -189,13 +190,90 @@ export function createClinic(app) {
   };
   const ROW1 = -0.46;
   const ROW2 = -0.6;
-  const bStart = btn('Mulai kerja', 'mint', -0.43, ROW1, () => start('shift'));
-  const bEvent = btn('Mode Event', 'pink', 0, ROW1, () => start('event'));
+  const bStart = btn('Mulai kerja', 'mint', -0.43, ROW1, () => askName('shift'));
+  const bEvent = btn('Mode Event', 'pink', 0, ROW1, () => askName('event'));
   const bTut = btn('Tutorial', 'light', 0.43, ROW1, () => start('tutorial'));
   const bHow = btn('Cara main', 'light', -0.48, ROW2, () => { bigContent = bigContent.kind === 'how' ? { kind: 'title' } : { kind: 'how' }; big.redraw(); bHow.userData.setLabel(bigContent.kind === 'how' ? 'Kembali' : 'Cara main'); }, 0.3);
   const bDecor = btn('Dekorasi', 'light', -0.16, ROW2, () => openShop(), 0.3);
   const bSettings = btn('Pengaturan', 'light', 0.16, ROW2, () => openSettings(), 0.3);
   const bLobby = btn('Lobby FDC', 'pink', 0.48, ROW2, () => toLobby(), 0.3);
+
+  // ------------------------------------------------------------------ Papan Skor (today's top 10, beside the title menu)
+  // The booth TV shows the headset through casting, so this board is what the queue sees
+  // between players. It also shows after a round, with the player's line highlighted.
+  let playerName = '';
+  let lastEntry = null;
+  const lbPanel = makePanel(0.62, 0.84, (c, W, H) => {
+    card(c, W, H, { r: 0.07, stroke: P.gold, lw: 10 });
+    const n = progress.playsToday();
+    const mark = state === 'final' ? lastEntry : null;
+    drawLeaderboard(c, W, H, { list: progress.topToday(10), mark, markPlace: mark ? progress.placeToday(mark) : 0, footer: n ? `${n} dokter sudah main hari ini` : 'Tulis namamu, masuk papan skor!' });
+  });
+  lbPanel.mesh.position.set(1.0, 1.6, -1.0);
+  lbPanel.mesh.rotation.y = -0.38;
+  group.add(lbPanel.mesh);
+
+  // ------------------------------------------------------------------ name entry (before Mulai kerja / Mode Event)
+  const NAME_MAX = 14;
+  let nameMode = 'shift';
+  let nameText = '';
+  const NAME_CENTER = new THREE.Vector3(-0.08, 1.6, -1.24);
+  const namePanel = makePanel(1.32, 0.96, (c, W, H) => {
+    card(c, W, H, { r: 0.07, stroke: P.pink, lw: 10 });
+    const pad = W * 0.05;
+    text(c, 'Siapa namamu, Dok?', pad, H * 0.1, { size: H * 0.065, weight: 900, color: P.mintDark });
+    text(c, nameMode === 'event' ? `Mode Event · ${config.eventMinutes} menit` : `Mulai kerja · ${config.patientsPerShift} pasien`, W - pad, H * 0.1, { size: H * 0.04, weight: 800, color: P.pinkDeep, align: 'right' });
+    text(c, 'Namamu akan tampil di Papan Skor hari ini.', pad, H * 0.16, { size: H * 0.034, color: P.muted });
+    roundRect(c, pad, H * 0.2, W - pad * 2, H * 0.14, H * 0.04);
+    c.fillStyle = P.mintSoft;
+    c.fill();
+    c.lineWidth = 6;
+    c.strokeStyle = P.mint;
+    c.stroke();
+    const shown = niceName(nameText);
+    text(c, shown ? `${shown}_` : 'Tekan huruf di bawah...', W / 2, H * 0.295, { size: H * 0.07, weight: shown ? 900 : 600, color: shown ? P.ink : P.muted, align: 'center', maxWidth: W - pad * 3 });
+  });
+  namePanel.mesh.position.copy(NAME_CENTER);
+  namePanel.mesh.visible = false;
+  namePanel.mesh.renderOrder = 1;
+  group.add(namePanel.mesh);
+  const nameBtns = [];
+  const addNameBtn = (label, tone, x, y, w, onSelect, h = 0.095) => {
+    const b = makeButton(app, { label, tone, w, h, onSelect });
+    b.position.set(NAME_CENTER.x + x, NAME_CENTER.y + y, NAME_CENTER.z + 0.02);
+    b.renderOrder = 2; // always drawn after the panel behind it
+    b.visible = false;
+    group.add(b);
+    nameBtns.push(b);
+    return b;
+  };
+  const typeKey = (ch) => {
+    if (ch === '⌫') nameText = nameText.slice(0, -1);
+    else if (nameText.length < NAME_MAX && !(ch === ' ' && (!nameText || nameText.endsWith(' ')))) nameText += ch;
+    namePanel.redraw();
+  };
+  const KEY_ROWS = ['ABCDEFGHI', 'JKLMNOPQR', 'STUVWXYZ⌫'];
+  KEY_ROWS.forEach((row, r) => [...row].forEach((ch, i) => {
+    addNameBtn(ch, ch === '⌫' ? 'pink' : 'light', (i - 4) * 0.132, 0.06 - r * 0.115, 0.118, () => typeKey(ch));
+  }));
+  addNameBtn('Spasi', 'light', -0.4, -0.3, 0.4, () => typeKey(' '));
+  addNameBtn('Kembali', 'light', -0.4, -0.415, 0.4, () => { bigContent = { kind: 'title' }; big.redraw(); layout(); });
+  addNameBtn('Mulai! ›', 'mint', 0.3, -0.3, 0.56, () => startNamed(), 0.12);
+  addNameBtn('Main tanpa nama', 'light', 0.3, -0.415, 0.56, () => { nameText = ''; startNamed(); });
+  function askName(m) {
+    if (!config.askName) { playerName = ''; start(m); return; }
+    nameMode = m;
+    nameText = '';
+    bigContent = { kind: 'name' };
+    namePanel.redraw();
+    lbPanel.redraw();
+    layout();
+    assistant.say('Tulis namamu dulu ya, Dok!', 2);
+  }
+  function startNamed() {
+    playerName = niceName(nameText) || `Dokter Tamu ${progress.playsToday() + 1}`;
+    start(nameMode);
+  }
 
   // ------------------------------------------------------------------ Pengaturan (game settings)
   const SET_CENTER = new THREE.Vector3(0, 1.62, -1.24);
@@ -276,6 +354,7 @@ export function createClinic(app) {
   }
   addSetBtn('Selesai ✓', 'mint', 0.56, 0.48, 0.28, () => closeSettings());
   addSetBtn('Hadiah roda ›', 'pink', -0.19, SET_TOP - SETTINGS.length * ROW_GAP - 0.03, 0.34, () => openPrizes());
+  addSetBtn('Papan skor & nama ›', 'pink', 0.37, SET_TOP - SETTINGS.length * ROW_GAP - 0.03, 0.64, () => openScores());
   function refreshSettings() {
     SETTINGS.forEach(([, label], i) => cycleBtns[i].userData.setLabel(label()));
     caseIds.forEach((id, i) => caseBtns[i].userData.setLabel(caseLabel(id)));
@@ -340,6 +419,60 @@ export function createClinic(app) {
   function openPrizes() {
     bigContent = { kind: 'prizes' };
     refreshPrizes();
+  }
+
+  // ------------------------------------------------------------------ Papan skor settings (booth staff)
+  let clearArmed = false;
+  const scorePanel = makePanel(1.5, 1.12, (c, W, H) => {
+    card(c, W, H, { r: 0.06, stroke: P.gold, lw: 10 });
+    const pad = W * 0.04;
+    text(c, 'Papan Skor', pad, H * 0.075, { size: H * 0.055, weight: 800, color: P.mintDark });
+    text(c, 'Untuk petugas booth. Tersimpan di headset ini.', W * 0.27, H * 0.075, { size: H * 0.026, color: P.muted });
+    // today's list on the right half
+    c.save();
+    c.translate(W * 0.5, H * 0.1);
+    drawLeaderboard(c, W * 0.48, H * 0.86, { list: progress.topToday(10), footer: `${progress.playsToday()} ronde hari ini` });
+    c.restore();
+    const last = progress.board().reduce((a, b) => (!a || b.at > a.at ? b : a), null);
+    text(c, 'Ronde terakhir:', pad, H * 0.5, { size: H * 0.03, weight: 800, color: P.pinkDeep });
+    text(c, last ? `${last.name || 'Tanpa nama'} · ${last.score}` : '-', pad, H * 0.55, { size: H * 0.034, weight: 700, color: P.ink, maxWidth: W * 0.44 });
+  });
+  scorePanel.mesh.position.copy(SET_CENTER);
+  scorePanel.mesh.visible = false;
+  scorePanel.mesh.renderOrder = 1;
+  group.add(scorePanel.mesh);
+  const scoreBtns = [];
+  const addScoreBtn = (label, tone, x, y, w, onSelect) => {
+    const b = makeButton(app, { label, tone, w, h: 0.075, onSelect });
+    b.position.set(SET_CENTER.x + x, SET_CENTER.y + y, SET_CENTER.z + 0.02);
+    b.renderOrder = 2;
+    b.visible = false;
+    group.add(b);
+    scoreBtns.push(b);
+    return b;
+  };
+  const askLabel = () => `Tanya nama pemain: ${config.askName ? 'Nyala' : 'Mati'}`;
+  const bAsk = addScoreBtn(askLabel(), 'light', -0.37, 0.3, 0.66, () => { config.askName = !config.askName; config.save(); sfx.play('click'); refreshScores(); });
+  addScoreBtn('Hapus ronde terakhir', 'light', -0.37, -0.22, 0.66, () => { const e = progress.removeLast(); sfx.play(e ? 'drop' : 'click'); refreshScores(); });
+  const bClear = addScoreBtn('Hapus semua skor hari ini', 'pink', -0.37, -0.32, 0.66, () => {
+    if (!clearArmed) { clearArmed = true; refreshScores(); return; }
+    progress.clearToday();
+    clearArmed = false;
+    sfx.play('drop');
+    refreshScores();
+  });
+  addScoreBtn('Selesai ✓', 'mint', -0.37, -0.45, 0.4, () => { clearArmed = false; bigContent = { kind: 'settings' }; refreshSettings(); layout(); });
+  function refreshScores() {
+    bAsk.userData.setLabel(askLabel());
+    bClear.userData.setLabel(clearArmed ? 'Yakin? Tekan sekali lagi' : 'Hapus semua skor hari ini');
+    scorePanel.redraw();
+    lbPanel.redraw();
+    layout();
+  }
+  function openScores() {
+    clearArmed = false;
+    bigContent = { kind: 'scores' };
+    refreshScores();
   }
 
   function closeSettings() {
@@ -588,15 +721,22 @@ export function createClinic(app) {
     const shop = t && bigContent.kind === 'shop';
     const sets = t && bigContent.kind === 'settings';
     const prz = t && bigContent.kind === 'prizes';
-    big.mesh.visible = (t || r || f) && !sets && !prz && !wheelOpen;
+    const nm = t && bigContent.kind === 'name';
+    const sc = t && bigContent.kind === 'scores';
+    big.mesh.visible = (t || r || f) && !sets && !prz && !nm && !sc && !wheelOpen;
+    namePanel.mesh.visible = nm;
+    show(nameBtns, nm);
+    scorePanel.mesh.visible = sc;
+    show(scoreBtns, sc);
+    lbPanel.mesh.visible = (t && !shop && !sets && !prz && !sc) || (f && mode !== 'tutorial');
     setPanel.mesh.visible = sets;
     show(setBtns, sets);
     prizePanel.mesh.visible = prz;
     show(prizeBtns, prz);
     if (prz) for (const r of prizeRows) if (!r.exists) show([r.name, r.minus, r.value, r.plus], false);
-    show([bStart, bEvent, bTut, bHow, bDecor, bSettings], t && !shop && !sets && !prz);
+    show([bStart, bEvent, bTut, bHow, bDecor, bSettings], t && !shop && !sets && !prz && !nm && !sc);
     show([...shopBtns, bShopBack], shop);
-    bLobby.visible = t && !shop && !sets && !prz && FROM_LOBBY;
+    bLobby.visible = t && !shop && !sets && !prz && !nm && !sc && FROM_LOBBY;
     bNext.visible = r;
     const spinFirst = f && wheelReady && !bigContent.prize;
     bSpin.visible = spinFirst && !wheelOpen;
@@ -699,7 +839,8 @@ export function createClinic(app) {
       text(c, rankOf(shift.stars, d.patients), W / 2, H * 0.21, { size: H * 0.06, weight: 700, align: 'center', color: P.pinkDeep });
       text(c, `${shift.score}`, W / 2, H * 0.38, { size: H * 0.15, weight: 800, align: 'center' });
       text(c, `Pasien senang: ${shift.happy}   ·   Pulang kecewa: ${shift.lost}   ·   ★ ${shift.stars}`, W / 2, H * 0.49, { size: H * 0.048, color: P.muted, align: 'center' });
-      text(c, `Skor terbaik: ${progress.best(mode)}${d.newBest ? '  (baru!)' : ''}   ·   Total bintang: ★ ${progress.stars}`, W / 2, H * 0.56, { size: H * 0.048, color: P.muted, align: 'center' });
+      if (d.place) text(c, `${playerName ? playerName + ': ' : ''}peringkat #${d.place} dari ${d.plays} hari ini${d.place === 1 ? '  🏆' : ''}${d.newBest ? '  · rekor baru!' : ''}`, W / 2, H * 0.56, { size: H * 0.05, weight: 800, color: d.place <= 3 ? '#c48a12' : P.mintDark, align: 'center', maxWidth: W - pad * 2 });
+      else text(c, `Skor terbaik: ${progress.best(mode)}${d.newBest ? '  (baru!)' : ''}   ·   Total bintang: ★ ${progress.stars}`, W / 2, H * 0.56, { size: H * 0.048, color: P.muted, align: 'center' });
       if (d.unlocked?.length) {
         roundRect(c, pad, H * 0.62, W - pad * 2, H * 0.12, H * 0.04);
         c.fillStyle = P.pinkSoft; c.fill();
@@ -1626,7 +1767,7 @@ export function createClinic(app) {
     if (mode !== 'tutorial') {
       const before = progress.rank().name;
       newBest = shift.score > progress.best(mode);
-      progress.addScore(shift.score, mode);
+      lastEntry = progress.addScore(shift.score, mode, playerName);
       unlocked = progress.addStars(shift.stars);
       const after = progress.rank().name;
       if (after !== before) rankUp = after;
@@ -1641,7 +1782,8 @@ export function createClinic(app) {
       if (patient) { const pt = patient; patient = null; disposeJobs(); room.chair.want = 0; guard(walkOut(pt.ch, false)); }
     }
     for (const w of [...waiting]) { waiting.splice(waiting.indexOf(w), 1); group.remove(w.bar); w.state = 'leaving'; walkers.add(w.ch); guard((async () => { await w.ch.standUp(w.seat.front); doorOpen(); await w.ch.walkTo([{ x: 1.7, z: -2.5 }, DOOR_IN, DOOR_OUT], { speed: 1.1 }); doorClose(); removeCharacter(w.ch); })()); }
-    bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : config.patientsPerShift, prize: null };
+    bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : config.patientsPerShift, prize: null, place: lastEntry && mode !== 'tutorial' ? progress.placeToday(lastEntry) : 0, plays: progress.playsToday() };
+    lbPanel.redraw();
     wheelReady = mode !== 'tutorial' && config.wheel && config.activePrizes().length > 0;
     big.redraw();
     layout();
@@ -1712,6 +1854,7 @@ export function createClinic(app) {
     bigContent = { kind: 'title' };
     clinicTime = 9.5;
     big.redraw();
+    lbPanel.redraw();
     layout();
     boards.rank.redraw();
   }
@@ -1740,7 +1883,7 @@ export function createClinic(app) {
     tray.update(dt);
     boards.xray.update(dt);
     boards.decor.update(dt, clock);
-    boards.tv.set({ mode: state === 'title' ? null : mode === 'tutorial' ? null : mode, timeLeft: Math.ceil(eventLeft), score: shift.score, combo: comboMult() });
+    boards.tv.set({ mode: state === 'title' ? null : mode === 'tutorial' ? null : mode, timeLeft: Math.ceil(eventLeft), score: shift.score, combo: comboMult(), name: playerName });
     room.setTime(clinicTime);
     if (paused) return;
 
@@ -1950,7 +2093,7 @@ export function createClinic(app) {
     skip(s) { for (const t of timers) t.t = Math.min(t.t, s ?? 0); },
     setEventLeft(v) { eventLeft = v; },
     force(list) { forced = list; },
-    openShop, shopPress, decor, openSettings, closeSettings, openPrizes, config, makePatientData: () => makePatientData(),
+    openShop, shopPress, decor, openSettings, closeSettings, openPrizes, askName, startNamed, typeKey, openScores, progress, get playerName() { return playerName; }, config, makePatientData: () => makePatientData(),
     setClock(h) { clinicTime = h; },
     get held() { return [...held.values()].map((t) => t.id); },
     get arrivalIn() { return nextArrival; },

@@ -40,19 +40,39 @@ export const progress = {
   get tutorialDone() { return store.get(TUT_KEY, false); },
   set tutorialDone(v) { store.set(TUT_KEY, !!v); },
 
-  /** Score board: every finished shift / event round. */
+  /**
+   * Score board: every finished shift / event round, with the player's name.
+   * Keeps all of today's rounds (up to 500, for a busy booth day) plus the 50 best of earlier days.
+   */
   board() { return store.get(BOARD_KEY, []); },
-  addScore(score, mode) {
-    const list = this.board();
-    const entry = { score, mode, at: Date.now(), day: today() };
-    list.push(entry);
-    list.sort((a, b) => b.score - a.score);
-    store.set(BOARD_KEY, list.slice(0, 50));
+  addScore(score, mode, name = '') {
+    const entry = { score, mode, name, at: Date.now(), day: today() };
+    const list = [...this.board(), entry].sort(byScore);
+    const d = today();
+    const todays = list.filter((e) => e.day === d).slice(0, 500);
+    const older = list.filter((e) => e.day !== d).slice(0, 50);
+    store.set(BOARD_KEY, [...todays, ...older].sort(byScore));
     return entry;
   },
-  topToday(n = 5) { return this.board().filter((e) => e.day === today()).slice(0, n); },
+  /** Today's rounds, best first (ties: whoever got there first). */
+  today() { return this.board().filter((e) => e.day === today()); },
+  topToday(n = 10) { return this.today().slice(0, n); },
+  /** 1-based place of an entry in today's list. */
+  placeToday(entry) { return this.today().findIndex((e) => e.at === entry.at && e.score === entry.score) + 1; },
+  playsToday() { return this.today().length; },
+  /** Booth staff: remove the most recent round (a rude name, a test round...). Returns it. */
+  removeLast() {
+    const list = this.board();
+    if (!list.length) return null;
+    const last = list.reduce((a, b) => (b.at > a.at ? b : a));
+    store.set(BOARD_KEY, list.filter((e) => e !== last));
+    return last;
+  },
+  clearToday() { store.set(BOARD_KEY, this.board().filter((e) => e.day !== today())); },
   best(mode) { return this.board().filter((e) => !mode || e.mode === mode)[0]?.score || 0; },
 };
+
+const byScore = (a, b) => b.score - a.score || a.at - b.at;
 
 function today() {
   const d = new Date();

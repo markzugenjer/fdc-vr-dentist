@@ -18,6 +18,7 @@ export const DEFAULTS = {
   hints: 3, // "Petunjuk" presses per round: shows which tool is right (0 = no hint button)
   voices: true, // gibberish character voices
   wheel: true, // Roda Hadiah: a prize wheel after every Mulai kerja / Mode Event round
+  askName: true, // ask the player's name before Mulai kerja / Mode Event, for the Papan Skor
   cases: { scaling: true, extraction: true, filling: true, whitening: true, braces: true, rootcanal: true, checkup: true },
   types: { scared: true, chatty: true, vip: true, kid: true },
 };

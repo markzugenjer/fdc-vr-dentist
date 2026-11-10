@@ -95,6 +95,25 @@ export const PRIZES = [
 
 Up to 8 prizes fit the settings panel. Turn the wheel off in Pengaturan → Roda hadiah. Each headset also counts the prizes it has given out (localStorage key `fdc.dentist.prizes`).
 
+## Papan Skor (leaderboard with names)
+
+Before **Mulai kerja** or **Mode Event**, the player types their name on a big keyboard: point and pull the trigger. **Mulai!** starts the round. **Main tanpa nama** plays as "Dokter Tamu 12". Names are tidied automatically, so "BUDI santoso" becomes "Budi Santoso".
+
+**Where it shows:**
+- **Next to the title menu:** today's top 10 with medals for the first three. This is what the booth TV shows through casting between players.
+- **After a round:**
+  - the final board says "Budi: peringkat #3 dari 25 hari ini"
+  - the leaderboard highlights the player's line
+  - if the player is outside the top 10, they still get their own line at the bottom
+- **The TV on the clinic wall:** the current player's name, plus today's top 10 in two columns.
+
+**For booth staff:** Pengaturan → **Papan skor & nama ›**.
+- **Tanya nama pemain:** turn the name step on or off.
+- **Hapus ronde terakhir:** remove the most recent round, for example a rude name or a test round.
+- **Hapus semua skor hari ini:** press twice to confirm.
+
+Scores are saved on that headset only. Each Quest has its own board, and a new board starts every day.
+
 ## Klinik FDC room
 
 The default room is modelled on photos of a real FDC Dental Clinic treatment room:
@@ -206,6 +225,7 @@ src/game/progress.js  stars, ranks, unlocks and the score board (saved on the he
 src/game/decor.js  Dekorasi: wall colours, posters, plants, uniform and chair colours
 src/game/config.js settings and their defaults (patients per shift, treatments, patient types...) and the wheel prizes
 src/game/wheel.js  Roda Hadiah, the prize wheel after a round
+src/game/leaderboard.js  Papan Skor: draws today's top 10 (title board, wall TV, staff panel)
 ```
 
 ## Add a treatment

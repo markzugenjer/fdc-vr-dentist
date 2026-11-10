@@ -54,7 +54,8 @@ Title screen → **Pengaturan**. Everything is saved on the headset.
 | Salah alat maksimal | 3, 5, 2 (scared patients get one less) |
 | Pasien 2 masalah | Kadang, Sering, Tidak ada |
 | Petunjuk alat | 3, 5, 10, Mati, 1 per round |
-| Momen lucu, Bantuan Suster Nana, Suara pasien, Roda hadiah | on / off |
+| Momen lucu, Bantuan Suster Nana, Suara pasien | on / off |
+| Roda hadiah | Semua mode, Mode Event saja, Mulai kerja saja, Mati |
 | Perawatan yang muncul | tick the treatments you want (at least one) |
 | Tipe pasien | tick Penakut, Cerewet, VIP, Anak-anak (normal patients always come) |
 
@@ -62,7 +63,7 @@ Title screen → **Pengaturan**. Everything is saved on the headset.
 
 ## Roda Hadiah (prize wheel)
 
-After a Mulai kerja or Mode Event round, the final board offers **Putar Roda Hadiah!** (once per round). The wheel takes the board's place: press **PUTAR!** (or point at the wheel and pull the trigger), it spins for about 5 seconds and stops on a prize with confetti and a fanfare. **Lanjut** goes back to the final board, which keeps showing the prize for the FDC staff.
+After a round, the final board offers **Putar Roda Hadiah!** (once per round). The wheel takes the board's place: press **PUTAR!** (or point at the wheel and pull the trigger), it spins for about 5 seconds and stops on a prize with confetti and a fanfare. **Lanjut** goes back to the final board, which keeps showing the prize for the FDC staff.
 
 ### Prizes and chances
 
@@ -93,7 +94,7 @@ export const PRIZES = [
 ];
 ```
 
-Up to 8 prizes fit the settings panel. Turn the wheel off in Pengaturan → Roda hadiah. Each headset also counts the prizes it has given out (localStorage key `fdc.dentist.prizes`).
+Up to 8 prizes fit the settings panel. Pengaturan → **Roda hadiah** picks which rounds end with the wheel: Semua mode, Mode Event saja, Mulai kerja saja, or Mati. Each headset also counts the prizes it has given out (localStorage key `fdc.dentist.prizes`).
 
 ## Papan Skor (leaderboard with names)
 

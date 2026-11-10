@@ -307,7 +307,7 @@ export function createClinic(app) {
     ['funny', () => `Momen lucu: ${config.funny ? 'Nyala' : 'Mati'}`],
     ['nurseHelp', () => `Bantuan Suster Nana: ${config.nurseHelp ? 'Nyala' : 'Mati'}`],
     ['voices', () => `Suara pasien: ${config.voices ? 'Nyala' : 'Mati'}`],
-    ['wheel', () => `Roda hadiah: ${config.wheel ? 'Nyala' : 'Mati'}`],
+    ['wheel', () => `Roda hadiah: ${choiceLabel('wheel')}`],
   ];
   const setBtns = [];
   const addSetBtn = (label, tone, x, y, w, onSelect) => {
@@ -1785,7 +1785,7 @@ export function createClinic(app) {
     for (const w of [...waiting]) { waiting.splice(waiting.indexOf(w), 1); group.remove(w.bar); w.state = 'leaving'; walkers.add(w.ch); guard((async () => { await w.ch.standUp(w.seat.front); doorOpen(); await w.ch.walkTo([{ x: 1.7, z: -2.5 }, DOOR_IN, DOOR_OUT], { speed: 1.1 }); doorClose(); removeCharacter(w.ch); })()); }
     bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : config.patientsPerShift, prize: null, place: lastEntry && mode !== 'tutorial' ? progress.placeToday(lastEntry) : 0, plays: progress.playsToday() };
     lbPanel.redraw();
-    wheelReady = mode !== 'tutorial' && config.wheel && config.activePrizes().length > 0;
+    wheelReady = config.wheelFor(mode) && config.activePrizes().length > 0;
     big.redraw();
     layout();
     starPop = 1;
@@ -2072,7 +2072,7 @@ export function createClinic(app) {
     get combo() { return combo; },
     tray, start, nextPatient, toTitle, boards, assistant, get room() { return room; },
     startShift: () => start('shift'),
-    wheel, openWheel, wheelButton, finish,
+    wheel, openWheel, wheelButton, finish, get wheelReady() { return wheelReady; },
     hint: () => useHint(),
     get hintsLeft() { return hintsLeft; },
     get hintVisible() { return bHint.visible; },

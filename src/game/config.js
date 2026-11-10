@@ -17,7 +17,7 @@ export const DEFAULTS = {
   nurseHelp: true, // Suster Nana hands over the right tool when you hesitate
   hints: 3, // "Petunjuk" presses per round: shows which tool is right (0 = no hint button)
   voices: true, // gibberish character voices
-  wheel: true, // Roda Hadiah: a prize wheel after every Mulai kerja / Mode Event round
+  wheel: 'both', // Roda Hadiah after a round: 'both' (Mulai kerja and Mode Event) | 'event' | 'shift' | 'off'
   askName: true, // ask the player's name before Mulai kerja / Mode Event, for the Papan Skor
   cases: { scaling: true, extraction: true, filling: true, whitening: true, braces: true, rootcanal: true, checkup: true },
   types: { scared: true, chatty: true, vip: true, kid: true },
@@ -54,6 +54,12 @@ export const CHOICES = {
   ],
   hearts: [2, 3, 5],
   hints: [0, 1, 3, 5, 10],
+  wheel: [
+    { id: 'both', label: 'Semua mode', modes: ['shift', 'event'] },
+    { id: 'event', label: 'Mode Event saja', modes: ['event'] },
+    { id: 'shift', label: 'Mulai kerja saja', modes: ['shift'] },
+    { id: 'off', label: 'Mati', modes: [] },
+  ],
   pairs: [
     { id: 'off', label: 'Tidak ada', chance: 0 },
     { id: 'sometimes', label: 'Kadang', chance: 0.25 },
@@ -73,6 +79,8 @@ function load() {
     ...DEFAULTS,
     ...saved,
     prizes: sameList ? saved.prizes : defaultPrizes(),
+    // older headsets saved the wheel as on/off
+    wheel: saved.wheel === true ? 'both' : saved.wheel === false ? 'off' : saved.wheel ?? DEFAULTS.wheel,
     cases: { ...DEFAULTS.cases, ...(saved.cases || {}) },
     types: { ...DEFAULTS.types, ...(saved.types || {}) },
   };
@@ -81,8 +89,8 @@ function load() {
 export const config = {
   ...load(),
   save() {
-    const { save, reset, resetPrizes, activePrizes, cycle, toggle, patienceMult, pairChance, ...data } = this;
-    void save; void reset; void resetPrizes; void activePrizes; void cycle; void toggle; void patienceMult; void pairChance;
+    const { save, reset, resetPrizes, activePrizes, wheelFor, cycle, toggle, patienceMult, pairChance, ...data } = this;
+    void save; void reset; void resetPrizes; void activePrizes; void wheelFor; void cycle; void toggle; void patienceMult; void pairChance;
     store.set(KEY, data);
   },
   reset() {
@@ -116,5 +124,7 @@ export const config = {
     return true;
   },
   get patienceMult() { return CHOICES.patience.find((c) => c.id === this.patience)?.mult ?? 1; },
+  /** Does this mode end with the Roda Hadiah? */
+  wheelFor(mode) { return (CHOICES.wheel.find((c) => c.id === this.wheel)?.modes ?? []).includes(mode); },
   get pairChance() { return CHOICES.pairs.find((c) => c.id === this.pairs)?.chance ?? 0.25; },
 };

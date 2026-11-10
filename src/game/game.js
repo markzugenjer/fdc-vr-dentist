@@ -10,7 +10,8 @@ import { Music } from './music.js';
 import { buildBoards } from './boards.js';
 import { progress } from './progress.js';
 import { Decor, DECOR, DECOR_ORDER } from './decor.js';
-import { config, CHOICES } from './config.js';
+import { config, CHOICES, BOOTH } from './config.js';
+import { PhotoBooth, drawPhotoCard } from './photo.js';
 import { PrizeWheel } from './wheel.js';
 import { drawLeaderboard, niceName } from './leaderboard.js';
 import { store } from '../core/util.js';
@@ -96,6 +97,7 @@ export function createClinic(app) {
   let hintsLeft = 0; // "Petunjuk" presses left this round
   let hinted = null; // the tool the last hint pointed at (its ring goes once it's picked up)
   let lastPointer = null;
+  let demo = false; // demo mode: the clinic plays itself while the booth is idle (see below)
   let clinicTime = 9.5; // clinic clock (hours)
   let stepIdx = 0;
   let stepProgress = 0;
@@ -197,6 +199,33 @@ export function createClinic(app) {
   const bDecor = btn('Dekorasi', 'light', -0.16, ROW2, () => openShop(), 0.3);
   const bSettings = btn('Pengaturan', 'light', 0.16, ROW2, () => openSettings(), 0.3);
   const bLobby = btn('Lobby FDC', 'pink', 0.48, ROW2, () => toLobby(), 0.3);
+
+  // ------------------------------------------------------------------ final countdown (last 10 s of Mode Event)
+  let countPulse = 0;
+  let countShown = -1;
+  const countPanel = makePanel(0.5, 0.36, (c, W, H) => {
+    if (countShown < 0) return;
+    c.fillStyle = 'rgba(232,103,108,0.92)';
+    roundRect(c, 6, 6, W - 12, H - 12, H * 0.3);
+    c.fill();
+    c.lineWidth = 10;
+    c.strokeStyle = '#ffffff';
+    c.stroke();
+    text(c, `${countShown}`, W / 2, H * 0.78, { size: H * 0.8, weight: 900, color: '#ffffff', align: 'center' });
+  }, { ppm: 400 });
+  countPanel.mesh.position.set(0.05, 2.0, -1.35);
+  countPanel.mesh.visible = false;
+  countPanel.mesh.renderOrder = 3;
+  group.add(countPanel.mesh);
+  function updateCountdown(dt) {
+    const on = state !== 'final' && state !== 'title' && mode === 'event' && eventLeft > 0 && eventLeft <= 10 && !paused;
+    countPanel.mesh.visible = on;
+    if (!on) { countShown = -1; music.setRate(1); return; }
+    const n = Math.ceil(eventLeft);
+    if (n !== countShown) { countShown = n; countPanel.redraw(); }
+    countPulse = Math.max(0, countPulse - dt * 3);
+    countPanel.mesh.scale.setScalar(1 + countPulse * 0.35);
+  }
 
   // ------------------------------------------------------------------ Papan Skor (today's top 10, beside the title menu)
   // The booth TV shows the headset through casting, so this board is what the queue sees
@@ -376,7 +405,13 @@ export function createClinic(app) {
     const total = config.prizes.filter((p) => p.on).reduce((a, p) => a + p.chance, 0);
     const ok = Math.abs(total - 100) < 0.01;
     text(c, `Total: ${fmtPct(total)}%${ok ? '' : '  (dibagi otomatis jadi 100%)'}`, W * 0.36, H * 0.075, { size: H * 0.03, weight: 800, color: ok ? P.mintDark : P.pinkDeep });
-    text(c, 'Tekan nama untuk nyala/mati. − / + untuk ubah peluang. Tersimpan di headset.', pad, H * 0.13, { size: H * 0.026, color: P.muted });
+    text(c, 'Tekan nama untuk nyala/mati. Tahan − / + untuk cepat. Tersimpan di headset.', pad, H * 0.13, { size: H * 0.026, color: P.muted });
+    // column headings (x in panel metres → canvas)
+    const cx = (x) => ((x + 0.75) / 1.5) * W;
+    text(c, 'Peluang', cx(0.04), H * 0.19, { size: H * 0.028, weight: 800, color: P.mintDark, align: 'center' });
+    text(c, 'Stok (sisa)', cx(0.47), H * 0.19, { size: H * 0.028, weight: 800, color: P.mintDark, align: 'center' });
+    const out = config.prizes.filter((p) => p.on && p.stock === 0).length;
+    if (out) text(c, `${out} hadiah habis (tidak muncul di roda)`, W - pad, H * 0.075, { size: H * 0.028, weight: 800, color: P.pinkDeep, align: 'right' });
   });
   prizePanel.mesh.position.copy(SET_CENTER);
   prizePanel.mesh.visible = false;
@@ -393,14 +428,54 @@ export function createClinic(app) {
     prizeBtns.push(b);
     return b;
   };
+  // hold − / + to repeat (after a short pause), so setting 300 kipas doesn't take 300 presses
+  const repeatOnHold = (b, fn) => {
+    let last = 0;
+    let held = 0;
+    let rep = 0;
+    b.userData.onHold = (hit, p, dt) => {
+      const now = performance.now();
+      if (now - last > 120) { held = 0; rep = 0; } // a new press
+      last = now;
+      held += dt;
+      if (held < 0.45) return;
+      rep += dt;
+      while (rep > 0.07) { rep -= 0.07; fn(); }
+    };
+  };
+  const prizeAt = (i) => config.prizes[i];
+  const changeChance = (i, up) => {
+    const p = prizeAt(i);
+    if (!p) return;
+    p.chance = up ? Math.min(100, +(p.chance + stepFor(p.chance, true)).toFixed(1)) : Math.max(0, +(p.chance - stepFor(p.chance, false)).toFixed(1));
+    config.save();
+    refreshPrizes();
+  };
+  // stock: null = unlimited (∞). − from ∞ starts at 100; above 100 it moves by 10; + past 990 goes back to ∞
+  const changeStock = (i, up) => {
+    const p = prizeAt(i);
+    if (!p) return;
+    const v = p.stock;
+    if (up) p.stock = v == null ? null : v >= 100 ? (v + 10 > 990 ? null : v + 10) : v + 1;
+    else p.stock = v == null ? 100 : Math.max(0, v > 100 ? v - 10 : v - 1);
+    config.save();
+    refreshPrizes();
+  };
   for (let i = 0; i < 8; i++) {
     const y = PRIZE_TOP - i * 0.09;
     const row = {
-      name: addPrizeBtn('', 'light', -0.3, y, 0.74, () => { const p = config.prizes[i]; if (!p) return; p.on = !p.on; config.save(); sfx.play('click'); refreshPrizes(); }),
-      minus: addPrizeBtn('−', 'light', 0.17, y, 0.1, () => { const p = config.prizes[i]; if (!p) return; p.chance = Math.max(0, +(p.chance - stepFor(p.chance, false)).toFixed(1)); config.save(); sfx.play('click'); refreshPrizes(); }),
-      value: addPrizeBtn('', 'mint', 0.32, y, 0.18, () => {}),
-      plus: addPrizeBtn('+', 'light', 0.47, y, 0.1, () => { const p = config.prizes[i]; if (!p) return; p.chance = Math.min(100, +(p.chance + stepFor(p.chance, true)).toFixed(1)); config.save(); sfx.play('click'); refreshPrizes(); }),
+      name: addPrizeBtn('', 'light', -0.44, y, 0.56, () => { const p = prizeAt(i); if (!p) return; p.on = !p.on; config.save(); sfx.play('click'); refreshPrizes(); }),
+      minus: addPrizeBtn('−', 'light', -0.08, y, 0.09, () => changeChance(i, false)),
+      value: addPrizeBtn('', 'mint', 0.04, y, 0.14, () => {}),
+      plus: addPrizeBtn('+', 'light', 0.16, y, 0.09, () => changeChance(i, true)),
+      sMinus: addPrizeBtn('−', 'light', 0.33, y, 0.09, () => changeStock(i, false)),
+      sValue: addPrizeBtn('', 'light', 0.47, y, 0.17, () => {}),
+      sPlus: addPrizeBtn('+', 'light', 0.61, y, 0.09, () => changeStock(i, true)),
     };
+    repeatOnHold(row.minus, () => changeChance(i, false));
+    repeatOnHold(row.plus, () => changeChance(i, true));
+    repeatOnHold(row.sMinus, () => changeStock(i, false));
+    repeatOnHold(row.sPlus, () => changeStock(i, true));
     prizeRows.push(row);
   }
   addPrizeBtn('Kembali ke awal', 'pink', -0.4, -0.47, 0.5, () => { config.resetPrizes(); sfx.play('drop'); refreshPrizes(); });
@@ -410,8 +485,10 @@ export function createClinic(app) {
       const p = config.prizes[i];
       r.exists = !!p;
       if (!p) return;
-      r.name.userData.setLabel(`${p.on ? '✓' : '✗'}  ${p.text}`);
+      const out = p.stock === 0;
+      r.name.userData.setLabel(`${p.on ? '✓' : '✗'}  ${p.text}${out ? ' (habis)' : ''}`);
       r.value.userData.setLabel(p.on ? `${fmtPct(p.chance)}%` : 'mati');
+      r.sValue.userData.setLabel(p.stock == null ? '∞' : `${p.stock}`);
     });
     prizePanel.redraw();
     layout();
@@ -601,12 +678,43 @@ export function createClinic(app) {
   let wheelReady = false; // this round may spin
   let wheelOpen = false;
   const bSpin = btn('Putar Roda Hadiah!', 'pink', 0, ROW1, () => openWheel(), 0.62);
+
+  // ------------------------------------------------------------------ Foto kenangan (photo card after the round)
+  const photo = new PhotoBooth(app.renderer, app.scene);
+  let photoOpen = false;
+  const photoPanel = makePanel(1.3, 0.78, (c, W, H) => {
+    if (!photo.has) return;
+    drawPhotoCard(c, W, H, {
+      photo: photo.canvas, name: playerName, score: shift.score, place: bigContent.place || 0, plays: bigContent.plays || 0,
+      prize: bigContent.prize || '', link: BOOTH.link, eventName: BOOTH.eventName,
+    });
+  });
+  photoPanel.mesh.position.copy(FRONT);
+  photoPanel.mesh.visible = false;
+  group.add(photoPanel.mesh);
+  const bPhoto = btn('Foto kenangan', 'pink', 0, ROW2, () => {
+    photoOpen = !photoOpen;
+    if (photoOpen) { photoPanel.redraw(); sfx.play('sparkle'); assistant.say('Cekrek! Foto layar TV-nya ya!', 2.4); }
+    bPhoto.userData.setLabel(photoOpen ? 'Lihat skor' : 'Foto kenangan');
+    layout();
+  }, 0.5);
+  /** Snapshot of the patient cheering, from a camera in front of the chair (Suster Nana in the frame too). */
+  function takePhoto(stars) {
+    if (!patient || mode === 'tutorial' || demo) return;
+    const h = patient.ch.headWorld(new THREE.Vector3());
+    const at = h.clone().add(new THREE.Vector3(-0.28, -0.05, -0.05));
+    const from = h.clone().add(new THREE.Vector3(0.55, 0.32, 0.95));
+    photo.capture(from, at, stars);
+  }
   const bWheelGo = makeButton(app, { label: 'PUTAR!', tone: 'pink', w: 0.42, h: 0.13, onSelect: () => wheelButton() });
   bWheelGo.position.set(0.66, 1.2, -1.08); // right of the wheel, clear of the spittoon and the lamp
   bWheelGo.rotation.y = -0.3;
   group.add(bWheelGo);
   wheel.onResult = (prize) => {
     bigContent.prize = prize.text;
+    // one less in stock (unlimited prizes have stock null)
+    const won = config.prizes.find((p) => p.text === prize.text);
+    if (won && won.stock != null) { won.stock = Math.max(0, won.stock - 1); config.save(); }
     big.redraw();
     bWheelGo.userData.setLabel('Lanjut');
     assistant.act('clap', 2);
@@ -733,7 +841,7 @@ export function createClinic(app) {
     show(setBtns, sets);
     prizePanel.mesh.visible = prz;
     show(prizeBtns, prz);
-    if (prz) for (const r of prizeRows) if (!r.exists) show([r.name, r.minus, r.value, r.plus], false);
+    if (prz) for (const r of prizeRows) if (!r.exists) show([r.name, r.minus, r.value, r.plus, r.sMinus, r.sValue, r.sPlus], false);
     show([bStart, bEvent, bTut, bHow, bDecor, bSettings], t && !shop && !sets && !prz && !nm && !sc);
     show([...shopBtns, bShopBack], shop);
     bLobby.visible = t && !shop && !sets && !prz && !nm && !sc && FROM_LOBBY;
@@ -742,6 +850,9 @@ export function createClinic(app) {
     bSpin.visible = spinFirst && !wheelOpen;
     bWheelGo.visible = f && wheelOpen && !wheel.spinning;
     show([bAgain, bMenu], f && !spinFirst && !wheelOpen);
+    bPhoto.visible = f && !spinFirst && !wheelOpen && photo.has && mode !== 'tutorial';
+    photoPanel.mesh.visible = bPhoto.visible && photoOpen;
+    if (photoPanel.mesh.visible) big.mesh.visible = false;
     bLobby2.visible = f && !spinFirst && !wheelOpen && FROM_LOBBY;
     cardPanel.mesh.visible = !t && !f;
     show([pausePanel.mesh, pResume, pMenu, pMusic], paused);
@@ -863,7 +974,7 @@ export function createClinic(app) {
   function drawCard(c, W, H) {
     card(c, W, H, { r: 0.08, fill: 'rgba(255,255,255,0.95)', stroke: P.pink, lw: 8 });
     const pad = W * 0.07;
-    const head1 = mode === 'event'
+    const head1 = demo ? 'DEMO · AYO MAIN!' : mode === 'event'
       ? `EVENT  ${fmt(eventLeft)}`
       : mode === 'tutorial' ? 'TUTORIAL' : `PASIEN ${Math.min(served + 1, config.patientsPerShift)} / ${config.patientsPerShift}`;
     text(c, head1, pad, H * 0.075, { size: H * 0.036, weight: 800, color: mode === 'event' && eventLeft < 15 ? P.red : P.muted });
@@ -1430,7 +1541,7 @@ export function createClinic(app) {
       sfx.loop(tool.sound || 'none', false);
       return;
     }
-    stepProgress = Math.min(1, stepProgress + dt / step.time);
+    stepProgress = Math.min(1, stepProgress + (demo ? dt * 1.6 : dt) / step.time); // the demo works a bit faster
     work.progress(step.tool, stepProgress, dt);
     if (tool.sound) sfx.loop(tool.sound, true);
     tool.working = true;
@@ -1657,6 +1768,7 @@ export function createClinic(app) {
     fx.emit('heart', h.clone().add(new THREE.Vector3(0, 0.22, 0)), 6, { speed: 0.3, size: 0.06, up: 0.35, life: 1.4 });
     fx.emit('star', h, 12, { speed: 0.6, size: 0.04, life: 1.0, up: 0.2 });
     if (r.mult > 1 && comboMult() > 1) celebrateCombo(h);
+    guard(wait(0.45).then(() => takePhoto(r.stars)));
     assistant.act('clap', 2.0);
     assistant.face('happy');
     assistant.say(comboMult() > 1 ? `COMBO ×${comboMult()}! Luar biasa, Dok!` : 'Hebat, Dok!', 1.8);
@@ -1823,6 +1935,9 @@ export function createClinic(app) {
 
   function start(m) {
     resetAll();
+    photo.reset();
+    photoOpen = false;
+    bPhoto.userData.setLabel('Foto kenangan');
     if (wheelOpen) { wheel.close(); wheelOpen = false; }
     wheelReady = false;
     mode = m;
@@ -1860,6 +1975,130 @@ export function createClinic(app) {
     boards.rank.redraw();
   }
 
+  // ------------------------------------------------------------------ demo mode (idle booth: the clinic plays itself)
+  // After DEMO_AFTER seconds on the start screen with no button pressed, patients keep coming and a
+  // gloved "ghost" hand treats them with the right tools, so the booth TV (casting) shows movement.
+  // Nothing is scored or saved. Any trigger press goes back to the start screen.
+  const DEMO_AFTER = 45;
+  let demoIdle = 0;
+  let demoT = 0;
+  const demoHand = new THREE.Group();
+  {
+    const glove = new THREE.MeshStandardMaterial({ color: '#8ec5ea', roughness: 0.55 });
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.03, 0.09), glove);
+    palm.position.set(0, -0.025, 0.04);
+    demoHand.add(palm);
+    for (let i = 0; i < 4; i++) {
+      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.009, 0.045, 3, 6), glove);
+      f.position.set(-0.027 + i * 0.018, -0.005, -0.012);
+      f.rotation.x = Math.PI / 2 + 0.6;
+      demoHand.add(f);
+    }
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.01, 0.04, 3, 6), glove);
+    thumb.position.set(0.042, -0.012, 0.02);
+    thumb.rotation.set(Math.PI / 2, 0, -0.7);
+    demoHand.add(thumb);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.06, 10), glove);
+    cuff.rotation.x = Math.PI / 2;
+    cuff.position.set(0, -0.025, 0.11);
+    demoHand.add(cuff);
+  }
+  demoHand.visible = false;
+  demoHand.position.set(0.3, 1.15, -0.35);
+  group.add(demoHand);
+  const demoPointer = { id: 'demo', object: demoHand, pressed: false, justPressed: false, demo: true };
+  const DEMO_PARK = new THREE.Vector3(0.32, 1.18, -0.38);
+  const demoBanner = makePanel(1.0, 0.22, (c, W, H) => {
+    c.fillStyle = P.pinkDeep;
+    roundRect(c, 6, 6, W - 12, H - 12, H * 0.4);
+    c.fill();
+    c.lineWidth = 8;
+    c.strokeStyle = '#ffffff';
+    c.stroke();
+    text(c, 'AYO MAIN! Jadi dokter gigi FDC', W / 2, H * 0.5, { size: H * 0.3, weight: 900, color: '#ffffff', align: 'center', maxWidth: W * 0.9 });
+    text(c, 'Pegang controller, tekan trigger untuk mulai', W / 2, H * 0.8, { size: H * 0.17, weight: 700, color: '#fff3f6', align: 'center' });
+  }, { ppm: 500 });
+  demoBanner.mesh.position.set(0, 2.05, -1.32);
+  demoBanner.mesh.visible = false;
+  demoBanner.mesh.renderOrder = 3;
+  group.add(demoBanner.mesh);
+  const anyPress = () => app.pointers.mouse.pressed || app.pointers.controllers.some((c) => c.pressed);
+  const _goal = new THREE.Vector3();
+  const _tip = new THREE.Vector3();
+  const _look = new THREE.Vector3();
+
+  function startDemo() {
+    demo = true;
+    playerName = '';
+    start('event');
+    eventLeft = 1e6;
+    demoHand.visible = true;
+    demoHand.position.copy(DEMO_PARK);
+    demoT = 1;
+    assistant.say('Lihat nih, begini cara merawat gigi! Ayo coba!', 3);
+  }
+  function stopDemo() {
+    if (!demo) return;
+    demo = false;
+    demoHand.visible = false;
+    demoBanner.mesh.visible = false;
+    toTitle();
+    demoIdle = 0;
+  }
+  /** Point the hand's -z (where the tool points) at a spot, then move it so the tool tip ends up there. */
+  function demoReach(goal, dt) {
+    demoHand.updateMatrixWorld(true);
+    _look.copy(demoHand.position).multiplyScalar(2).sub(goal);
+    demoHand.lookAt(_look);
+    const tool = held.get(demoPointer);
+    if (tool) { tool.tip.getWorldPosition(_tip); demoHand.position.addScaledVector(_goal.copy(goal).sub(_tip), 1 - Math.exp(-dt * 5)); }
+    else demoHand.position.lerp(goal, 1 - Math.exp(-dt * 4));
+  }
+  function demoPark(dt) {
+    const tool = held.get(demoPointer);
+    if (tool) returnTool(tool);
+    demoHand.position.lerp(DEMO_PARK, 1 - Math.exp(-dt * 3));
+  }
+  function updateDemo(dt) {
+    if (!demo) {
+      demoBanner.mesh.visible = false;
+      const idle = state === 'title' && bigContent.kind === 'title' && !paused && !wheelOpen;
+      demoIdle = idle && !anyPress() ? demoIdle + dt : 0;
+      if (demoIdle > DEMO_AFTER) startDemo();
+      return;
+    }
+    if (anyPress() || state === 'title' || state === 'final') { stopDemo(); return; }
+    demoBanner.mesh.visible = true;
+    demoBanner.mesh.scale.setScalar(1 + Math.sin(clock * 3) * 0.03);
+    demoT -= dt;
+    if (state === 'calm') {
+      demoPark(dt);
+      if (demoT <= 0) { calmDown(demoPointer); demoT = 0.8; }
+      return;
+    }
+    if (state !== 'treat' || !patient) { demoPark(dt); return; }
+    const j = firstOpen();
+    const step = curStep(j);
+    if (!step) { demoPark(dt); return; }
+    if (step.tool === 'xray') {
+      demoPark(dt);
+      if (demoT <= 0 && !boards.xray.scanning) { boards.onXray(); demoT = 2.5; }
+      return;
+    }
+    const tool = held.get(demoPointer);
+    if (!tool || tool.id !== step.tool) {
+      demoPark(dt);
+      if (demoT <= 0 && tray.tools[step.tool]) { tray.onPick(tray.tools[step.tool], demoPointer); demoT = 0.6; }
+      return;
+    }
+    const tj = jobFor(tool.id);
+    const target = tj ? tj.work.target(step.tool, jProg(tj)) : null;
+    if (target) target.getWorldPosition(_goal); else patient.ch.mouthWorld(_goal);
+    // filing in rhythm: wait just outside the mouth while the light is red
+    if (step.rhythm && !rhythmGreen) _goal.y += 0.06;
+    demoReach(_goal.clone(), dt);
+  }
+
   // ------------------------------------------------------------------ per frame
   let frameNo = 0;
   let idleT = 1.5;
@@ -1884,8 +2123,10 @@ export function createClinic(app) {
     tray.update(dt);
     boards.xray.update(dt);
     boards.decor.update(dt, clock);
-    boards.tv.set({ mode: state === 'title' ? null : mode === 'tutorial' ? null : mode, timeLeft: Math.ceil(eventLeft), score: shift.score, combo: comboMult(), name: playerName });
+    boards.tv.set({ mode: state === 'title' || demo ? null : mode === 'tutorial' ? null : mode, timeLeft: Math.ceil(eventLeft), score: shift.score, combo: comboMult(), name: playerName });
     room.setTime(clinicTime);
+    updateCountdown(dt);
+    updateDemo(dt);
     if (paused) return;
 
     clock += dt;
@@ -1900,8 +2141,13 @@ export function createClinic(app) {
     // event clock
     if (playing && mode === 'event') {
       eventLeft -= dt;
-      if (eventLeft <= 10 && Math.ceil(eventLeft) !== Math.ceil(eventLeft + dt)) sfx.play('beat');
-      if (eventLeft <= 0) { eventLeft = 0; finish(); }
+      // the last 10 seconds: a count beep each second (higher for 3-2-1), a tock on the half,
+      // faster music and a big pulsing number for the player and the crowd
+      const sec = Math.ceil(eventLeft);
+      if (eventLeft <= 10 && sec !== Math.ceil(eventLeft + dt)) { sfx.play(sec <= 3 ? 'count-hi' : 'count'); countPulse = 1; }
+      else if (eventLeft <= 10 && Math.ceil(eventLeft * 2) !== Math.ceil((eventLeft + dt) * 2)) sfx.play('tock');
+      music.setRate(eventLeft <= 10 ? 1.35 : 1);
+      if (eventLeft <= 0) { eventLeft = 0; music.setRate(1); finish(); }
     }
 
     // new arrivals for the bench
@@ -2070,9 +2316,9 @@ export function createClinic(app) {
     get waiting() { return waiting; },
     get shift() { return shift; },
     get combo() { return combo; },
-    tray, start, nextPatient, toTitle, boards, assistant, get room() { return room; },
+    tray, start, nextPatient, toTitle, boards, assistant, music, get room() { return room; },
     startShift: () => start('shift'),
-    wheel, openWheel, wheelButton, finish, get wheelReady() { return wheelReady; },
+    wheel, openWheel, wheelButton, finish, get wheelReady() { return wheelReady; }, photo, takePhoto, photoButton: () => bPhoto.userData.onSelect(),
     hint: () => useHint(),
     get hintsLeft() { return hintsLeft; },
     get hintVisible() { return bHint.visible; },
@@ -2094,6 +2340,7 @@ export function createClinic(app) {
     skip(s) { for (const t of timers) t.t = Math.min(t.t, s ?? 0); },
     setEventLeft(v) { eventLeft = v; },
     force(list) { forced = list; },
+    startDemo, stopDemo, get demo() { return demo; }, get demoHeld() { return held.get(demoPointer)?.id; },
     openShop, shopPress, decor, openSettings, closeSettings, openPrizes, askName, startNamed, typeKey, openScores, progress, get playerName() { return playerName; }, config, makePatientData: () => makePatientData(),
     setClock(h) { clinicTime = h; },
     get held() { return [...held.values()].map((t) => t.id); },

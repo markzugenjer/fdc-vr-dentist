@@ -84,6 +84,8 @@ After a round, the final board offers **Putar Roda Hadiah!** (once per round). T
 
 If the chances of the prizes that are on don't add up to 100%, the header says so and the wheel scales them to 100% automatically. For example, with Gunting Kuku off, the other prizes keep their proportions.
 
+**Stock (stok):** in the same panel, set how many of each prize you brought. **∞** means unlimited. Press − on ∞ to start at 100; hold − or + to change quickly. The wheel counts down every win and skips a prize once it reaches 0, and the panel shows "(habis)". When every prize is out, the wheel doesn't appear.
+
 **For every headset:** edit `PRIZES` in `src/game/config.js` (`text` and `chance` in %) and push. Renaming or adding prizes resets each headset's saved list to the new defaults.
 
 ```js
@@ -114,6 +116,33 @@ Before **Mulai kerja** or **Mode Event**, the player types their name on a big k
 - **Hapus semua skor hari ini:** press twice to confirm.
 
 Scores are saved on that headset only. Each Quest has its own board, and a new board starts every day.
+
+## Booth extras
+
+**Demo mode:**
+- When nobody presses anything on the start screen for 45 seconds, the clinic plays itself:
+  - patients come in
+  - a blue-gloved hand treats them with the right tools
+  - a pink "AYO MAIN!" banner floats above
+- The booth TV (casting) shows movement instead of a still menu, and nothing is scored or saved.
+- Any trigger press goes back to the start screen.
+- The Quest pauses when nobody is wearing it, so for the demo to keep running on a headset lying on the table, turn off the proximity sensor:
+  - in Meta Quest Developer Hub, or
+  - with `adb shell am broadcast -a com.oculus.vrpowermanager.prox_close`. This lasts until the Quest restarts; undo it with `adb shell am broadcast -a com.oculus.vrpowermanager.automation_disable`.
+
+**Foto kenangan:**
+- During a round, the game takes a photo of the best happy patient cheering with their new smile, with Suster Nana clapping.
+- On the final screen, **Foto kenangan** shows it as an FDC photo card with:
+  - the player's name, score, place and prize
+  - a QR code to FDC
+- Visitors take a photo of the TV with their phone to share it.
+- The event name and the QR link are `BOOTH` in `src/game/config.js`.
+
+**Last 10 seconds of Mode Event:**
+- a big red countdown floats above the patient
+- the wall TV switches to one giant number for the crowd
+- every second beeps, with higher beeps for 3-2-1
+- the music speeds up
 
 ## Klinik FDC room
 
@@ -226,6 +255,7 @@ src/game/progress.js  stars, ranks, unlocks and the score board (saved on the he
 src/game/decor.js  Dekorasi: wall colours, posters, plants, uniform and chair colours
 src/game/config.js settings and their defaults (patients per shift, treatments, patient types...) and the wheel prizes
 src/game/wheel.js  Roda Hadiah, the prize wheel after a round
+src/game/photo.js  Foto kenangan: the snapshot camera and the FDC photo card (with QR)
 src/game/leaderboard.js  Papan Skor: draws today's top 10 (title board, wall TV, staff panel)
 ```
 

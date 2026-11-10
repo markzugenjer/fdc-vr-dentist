@@ -27,8 +27,9 @@ export const DEFAULTS = {
  * Roda Hadiah prizes: the default list for every headset. `chance` is the percentage that
  * prize comes up (they should add up to 100; if not, the game scales them to 100).
  * The booth staff can change the percentages and switch prizes on/off on the headset itself:
- * Pengaturan → Atur hadiah roda. To rename prizes or change the defaults for every headset,
- * edit this list and push.
+ * Pengaturan → Hadiah roda, including how many of each prize are left (`stock`: a number, or
+ * null for unlimited). The wheel counts the stock down and skips a prize once it runs out.
+ * To rename prizes or change the defaults for every headset, edit this list and push.
  */
 export const PRIZES = [
   { text: 'Kipas FDC Fest', chance: 70 },
@@ -38,6 +39,12 @@ export const PRIZES = [
   { text: 'Racepack FDC Fest', chance: 2.5 },
   { text: 'Kipas Tangan Elektrik', chance: 5 },
 ];
+
+/** Booth details on the Foto kenangan card: the event name and where its QR code leads. */
+export const BOOTH = {
+  eventName: 'FDC Fest',
+  link: 'https://www.fdcdentalclinic.co.id',
+};
 
 /** The choices each setting cycles through in the game. */
 export const CHOICES = {
@@ -69,7 +76,7 @@ export const CHOICES = {
 
 const KEY = 'fdc.dentist.config';
 
-const defaultPrizes = () => PRIZES.map((p) => ({ text: p.text, chance: p.chance, on: true }));
+const defaultPrizes = () => PRIZES.map((p) => ({ text: p.text, chance: p.chance, on: true, stock: p.stock ?? null }));
 
 function load() {
   const saved = store.get(KEY, null) || {};
@@ -104,7 +111,7 @@ export const config = {
   },
   /** The prizes that are switched on, with weights for the wheel. */
   activePrizes() {
-    return this.prizes.filter((p) => p.on && p.chance > 0).map((p) => ({ text: p.text, weight: p.chance }));
+    return this.prizes.filter((p) => p.on && p.chance > 0 && p.stock !== 0).map((p) => ({ text: p.text, weight: p.chance }));
   },
   /** Move a setting to its next choice. */
   cycle(key) {

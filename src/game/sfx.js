@@ -100,6 +100,9 @@ export class Sfx {
       case 'bell': this.tone(1568, null, 0.6, 'sine', 0.06); this.tone(2349, null, 0.4, 'sine', 0.025, 0.02); break;
       case 'whoosh': this.burst(0.6, 1200, 0.8, 0.07); this.tone(200, 900, 0.5, 'sine', 0.04); break;
       case 'fanfare': [523, 659, 784].forEach((f, i) => this.tone(f, null, 0.13, 'square', 0.04, i * 0.11)); this.tone(1047, null, 0.55, 'square', 0.045, 0.33); this.tone(1319, null, 0.55, 'triangle', 0.05, 0.33); this.tone(1568, null, 0.7, 'sine', 0.04, 0.4); break;
+      case 'count': this.tone(880, null, 0.12, 'square', 0.05); this.tone(1760, null, 0.08, 'sine', 0.04); break;
+      case 'count-hi': this.tone(1175, null, 0.16, 'square', 0.06); this.tone(2349, null, 0.1, 'sine', 0.05); break;
+      case 'tock': this.tone(520, null, 0.05, 'triangle', 0.05); break;
       case 'buzzer': this.tone(220, 200, 0.6, 'square', 0.05); this.tone(233, 210, 0.6, 'square', 0.04); break;
       default: break;
     }

@@ -45,6 +45,7 @@ export class Music {
     this.nextTime = 0;
     this.timer = null;
     this.bus = null;
+    this.rate = 1; // tempo multiplier (1.35 in the last 10 s of Mode Event)
   }
 
   /** Call every frame; starts the music as soon as the browser allows sound. */
@@ -72,6 +73,9 @@ export class Music {
   }
 
   toggle() { this.setOn(!this.on); return this.on; }
+
+  /** Speed the music up (1 = normal). */
+  setRate(r) { this.rate = r; }
 
   /** Quieter while paused (or during a big moment), back up afterwards. */
   duck(v) {
@@ -103,7 +107,7 @@ export class Music {
     while (this.nextTime < c.currentTime + LOOKAHEAD) {
       if (this.on) this.playStep(this.step, this.nextTime);
       this.step++;
-      this.nextTime += STEP;
+      this.nextTime += STEP / this.rate;
     }
   }
 

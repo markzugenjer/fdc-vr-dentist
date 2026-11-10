@@ -237,6 +237,17 @@ function drawTv(c, W, H, s) {
   const pad = W * 0.05;
   text(c, 'PAPAN SKOR', pad, H * 0.13, { size: H * 0.08, weight: 900, color: P.mint });
   text(c, 'FDC Dentist', W - pad, H * 0.13, { size: H * 0.06, weight: 700, color: P.pink, align: 'right' });
+  if (s.mode === 'event' && s.timeLeft > 0 && s.timeLeft <= 10) {
+    // the last 10 seconds: one giant number for the crowd to count down with
+    const sec = Math.ceil(s.timeLeft);
+    c.fillStyle = sec % 2 ? '#3a1f26' : '#16302a';
+    c.fillRect(0, 0, W, H);
+    text(c, 'WAKTU HAMPIR HABIS!', W / 2, H * 0.16, { size: H * 0.085, weight: 900, color: P.pink, align: 'center' });
+    text(c, `${sec}`, W / 2, H * 0.78, { size: H * 0.62, weight: 900, color: sec <= 3 ? '#ff8a8a' : '#ffffff', align: 'center' });
+    text(c, `${s.score}`, W - pad, H * 0.95, { size: H * 0.07, weight: 900, color: P.gold, align: 'right' });
+    if (s.name) text(c, s.name, pad, H * 0.95, { size: H * 0.06, weight: 800, color: '#ffffff', maxWidth: W * 0.6 });
+    return;
+  }
   if (s.mode === 'event') {
     const sec = Math.max(0, Math.ceil(s.timeLeft));
     text(c, `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`, pad, H * 0.34, { size: H * 0.16, weight: 900, color: sec <= 10 ? '#ff8a8a' : '#ffffff' });

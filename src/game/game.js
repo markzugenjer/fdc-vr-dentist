@@ -784,6 +784,7 @@ export function createClinic(app) {
       });
       const best = progress.best();
       if (best) text(c, `Skor terbaik: ${best}`, pad, H * 0.72, { size: H * 0.045, weight: 700, color: P.muted });
+      text(c, `versi ${typeof __BUILD__ !== 'undefined' ? __BUILD__ : 'dev'}`, W - pad, H * 0.95, { size: H * 0.028, color: '#b3bfba', align: 'right' });
       const nu = progress.nextUnlock();
       if (nu) text(c, `Hadiah berikutnya di ★ ${nu.stars}: ${nu.name}`, W - pad, H * 0.72, { size: H * 0.042, weight: 600, color: P.muted, align: 'right' });
     } else if (d.kind === 'shop') {

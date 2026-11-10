@@ -50,6 +50,20 @@ export const put = (parent, geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
   return m;
 };
 
+/** The real time in Indonesia (WIB, UTC+7) in hours, e.g. 16.55 = 16:33. The wall clocks show this. */
+export function wibHours(now = Date.now()) {
+  const d = new Date(now + 7 * 3600e3);
+  return d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+}
+
+/** Wall clock hands (hour, minute and a thin red second hand) set to the real WIB time. */
+export function setWallClock(hourPivot, minPivot, secPivot) {
+  const h = wibHours();
+  minPivot.rotation.z = -((h % 1) * Math.PI * 2);
+  hourPivot.rotation.z = -((h % 12) / 12) * Math.PI * 2;
+  if (secPivot) secPivot.rotation.z = -(((h * 3600) % 60) / 60) * Math.PI * 2;
+}
+
 export function canvasTex(w, h, draw, repeat) {
   const c = document.createElement('canvas');
   c.width = w;
@@ -230,6 +244,8 @@ export function buildRoom() {
   const hour = put(clockHands, new THREE.BoxGeometry(0.018, 0.1, 0.006), new THREE.MeshStandardMaterial({ color: P.ink }), 0, 0.04, 0);
   const minute = put(clockHands, new THREE.BoxGeometry(0.012, 0.15, 0.006), new THREE.MeshStandardMaterial({ color: P.pinkDeep }), 0, 0.065, 0.004);
   const hourPivot = new THREE.Group(); clockHands.add(hourPivot); hourPivot.add(hour);
+  const secPivot = new THREE.Group(); clockHands.add(secPivot);
+  put(secPivot, new THREE.BoxGeometry(0.004, 0.16, 0.004), new THREE.MeshStandardMaterial({ color: '#e0565b' }), 0, 0.06, 0.008);
   const minPivot = new THREE.Group(); clockHands.add(minPivot); minPivot.add(minute);
 
   // --- dental chair (backrest and legrest tilt; the patient sits facing +X)
@@ -291,9 +307,7 @@ export function buildRoom() {
     /** Clinic time of day in hours (8.0 = 08:00): moves the clock hands, the light and the sky. */
     setTime(hours) {
       clockHours = hours;
-      const h = hours % 12;
-      minPivot.rotation.z = -((hours % 1) * Math.PI * 2);
-      hourPivot.rotation.z = -(h / 12) * Math.PI * 2;
+      setWallClock(hourPivot, minPivot, secPivot); // the clock shows the real time in Indonesia (WIB)
       // 08-15 day, 15-17.5 golden evening, 17.5-19 into the night
       const eve = THREE.MathUtils.clamp((hours - 15) / 2.5, 0, 1);
       const night = THREE.MathUtils.clamp((hours - 17.5) / 1.5, 0, 1);

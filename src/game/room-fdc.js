@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { ROOM, DOOR, SEAT, mats as baseMats, box, put, canvasTex, rod, mergeStill } from './room.js';
+import { ROOM, DOOR, SEAT, mats as baseMats, box, put, canvasTex, rod, mergeStill, setWallClock } from './room.js';
 import { FONT } from '../core/ui.js';
 
 /**
@@ -357,7 +357,7 @@ export function buildFdcRoom() {
   put(still, box(0.55, 0.035, 0.2, 0.006), m.black, -1.95, 1.755, minZ + 0.1);
   plant(still, m, -1.78, 1.775, minZ + 0.1, 0.45, { kind: 'snake', pot: m.pot });
 
-  // a clock on the right wall (the game's clinic time)
+  // a clock on the right wall (the real time in Indonesia, WIB)
   put(still, new THREE.CylinderGeometry(0.18, 0.18, 0.035, 32), m.white, maxX - 0.02, 2.05, -0.2, 0, 0, Math.PI / 2);
   put(still, new THREE.TorusGeometry(0.18, 0.018, 8, 32), m.black, maxX - 0.03, 2.05, -0.2, 0, Math.PI / 2);
   const clockHands = new THREE.Group();
@@ -367,6 +367,8 @@ export function buildFdcRoom() {
   const hour = put(clockHands, new THREE.BoxGeometry(0.016, 0.09, 0.005), m.black, 0, 0.035, 0);
   const minute = put(clockHands, new THREE.BoxGeometry(0.01, 0.14, 0.005), m.black, 0, 0.06, 0.003);
   const hourPivot = new THREE.Group(); clockHands.add(hourPivot); hourPivot.add(hour);
+  const secPivot = new THREE.Group(); clockHands.add(secPivot);
+  put(secPivot, new THREE.BoxGeometry(0.004, 0.15, 0.004), new THREE.MeshStandardMaterial({ color: '#d9534f' }), 0, 0.055, 0.007);
   const minPivot = new THREE.Group(); clockHands.add(minPivot); minPivot.add(minute);
 
   // lights: bright, neutral clinic light plus a warm touch from the cove
@@ -402,8 +404,7 @@ export function buildFdcRoom() {
     chairColors: (opt) => (opt.id === 'mint' ? FDC_CHAIR : opt),
     setTime(hours) {
       clockHours = hours;
-      minPivot.rotation.z = -((hours % 1) * Math.PI * 2);
-      hourPivot.rotation.z = -((hours % 12) / 12) * Math.PI * 2;
+      setWallClock(hourPivot, minPivot, secPivot); // the clock shows the real time in Indonesia (WIB)
       // no window here: the evening just warms and dims the light a little
       const eve = THREE.MathUtils.clamp((hours - 15) / 3, 0, 1);
       sun.intensity = sunDay * (1 - eve * 0.35);

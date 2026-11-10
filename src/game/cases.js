@@ -8,7 +8,7 @@
 export const CASES = {
   scaling: {
     title: 'Scaling karang gigi',
-    complaints: ['Gigiku kuning dan ada karangnya, Dok!', 'Kata temanku napasku bau... tolong, Dok!', 'Gusiku suka berdarah kalau sikat gigi.'],
+    complaints: ['Gigiku kuning dan ada karangnya, Dokter!', 'Kata temanku napasku bau... tolong, Dokter!', 'Gusiku suka berdarah kalau sikat gigi.'],
     steps: [
       { tool: 'mirror', text: 'Periksa gigi pasien', time: 1.2 },
       { tool: 'scaler', text: 'Bersihkan karang gigi', time: 3.2 },
@@ -17,7 +17,7 @@ export const CASES = {
   },
   extraction: {
     title: 'Cabut gigi',
-    complaints: ['Gigiku goyang dan sakit sekali...', 'Gigi bawahku goyang, Dok. Takut!', 'Ada gigi yang sudah rusak, Dok.'],
+    complaints: ['Gigiku goyang dan sakit sekali...', 'Gigi bawahku goyang, Dokter. Takut!', 'Ada gigi yang sudah rusak, Dokter.'],
     steps: [
       { tool: 'syringe', text: 'Bius dulu supaya tidak sakit', time: 1.4 },
       { tool: 'forceps', text: 'Cabut gigi yang goyang', time: 2.4 },
@@ -26,7 +26,7 @@ export const CASES = {
   },
   filling: {
     title: 'Tambal gigi',
-    complaints: ['Ada lubang di gigiku, ngilu kalau minum es!', 'Gigi atasku berlubang, Dok.', 'Kalau makan manis, gigiku cenat-cenut!'],
+    complaints: ['Ada lubang di gigiku, ngilu kalau minum es!', 'Gigi atasku berlubang, Dokter.', 'Kalau makan manis, gigiku cenat-cenut!'],
     steps: [
       { tool: 'mirror', text: 'Cari gigi yang berlubang', time: 1.2 },
       { tool: 'drill', text: 'Bersihkan lubang gigi', time: 2.6 },
@@ -36,7 +36,7 @@ export const CASES = {
   },
   whitening: {
     title: 'Pemutihan gigi',
-    complaints: ['Gigiku kuning gara-gara kopi, Dok!', 'Mau foto prewedding, gigi harus putih!', 'Kebanyakan minum teh nih, Dok...'],
+    complaints: ['Gigiku kuning gara-gara kopi, Dokter!', 'Mau foto prewedding, gigi harus putih!', 'Kebanyakan minum teh nih, Dokter...'],
     steps: [
       { tool: 'mirror', text: 'Periksa warna gigi', time: 1.2 },
       { tool: 'gel', text: 'Oleskan gel pemutih di tiap gigi', time: 3.0 },
@@ -46,7 +46,7 @@ export const CASES = {
   },
   braces: {
     title: 'Pasang behel',
-    complaints: ['Gigiku berantakan, mau pakai behel!', 'Mau behel warna-warni, Dok!', 'Gigi depanku maju, Dok...'],
+    complaints: ['Gigiku berantakan, mau pakai behel!', 'Mau behel warna-warni, Dokter!', 'Gigi depanku maju, Dokter...'],
     steps: [
       { tool: 'mirror', text: 'Periksa susunan gigi', time: 1.2 },
       { tool: 'bracket', text: 'Tempel bracket satu per satu', time: 3.0 },
@@ -56,7 +56,7 @@ export const CASES = {
   },
   rootcanal: {
     title: 'Perawatan saluran akar',
-    complaints: ['Gigiku nyut-nyutan sampai ke kepala!', 'Sakit banget kalau kena air panas, Dok...', 'Gigiku bengkak, Dok. Tolong!'],
+    complaints: ['Gigiku nyut-nyutan sampai ke kepala!', 'Sakit banget kalau kena air panas, Dokter...', 'Gigiku bengkak, Dokter. Tolong!'],
     steps: [
       { tool: 'xray', text: 'Cek foto rontgen di layar', time: 1.0 },
       { tool: 'syringe', text: 'Bius dulu supaya tidak sakit', time: 1.4 },
@@ -68,7 +68,7 @@ export const CASES = {
   checkup: {
     title: 'Cek gigi anak',
     kidsOnly: true,
-    complaints: ['Mama bilang aku harus periksa gigi!', 'Aku sudah sikat gigi lho, Dok!', 'Gigiku ada yang goyang, hihi.'],
+    complaints: ['Mama bilang aku harus periksa gigi!', 'Aku sudah sikat gigi lho, Dokter!', 'Gigiku ada yang goyang, hihi.'],
     steps: [
       { tool: 'mirror', text: 'Hitung giginya', time: 2.4 },
       { tool: 'gel', text: 'Oles fluoride rasa stroberi', time: 2.4 },
@@ -111,32 +111,32 @@ export const PERSONALITIES = {
 };
 
 export const LINES = {
-  hello: ['Halo, Dok!', 'Permisi, Dok...', 'Selamat siang, Dok!', 'Hai Dokter!'],
+  hello: ['Halo, Dokter!', 'Permisi, Dokter...', 'Selamat siang, Dokter!', 'Hai Dokter!'],
   sit: ['Aaa...', 'Aaaa~', 'Aaa (deg-degan)'],
-  pain: ['ADUH!! Sakit, Dok!', 'Aww! Pelan-pelan!', 'Hiii! Itu alat apa?!', 'Auuuw!'],
-  mad: ['Bukan itu alatnya, Dok!', 'Dokter yakin?!', 'Hmph! Salah lagi!', 'Dok, fokus dong!'],
-  lastChance: ['Sekali lagi salah, aku pulang ya!', 'Awas ya, Dok... sekali lagi!'],
+  pain: ['ADUH!! Sakit, Dokter!', 'Aww! Pelan-pelan!', 'Hiii! Itu alat apa?!', 'Auuuw!'],
+  mad: ['Bukan itu alatnya, Dokter!', 'Dokter yakin?!', 'Hmph! Salah lagi!', 'Dokter, fokus dong!'],
+  lastChance: ['Sekali lagi salah, aku pulang ya!', 'Awas ya, Dokter... sekali lagi!'],
   leave: ['Aku pulang saja...', 'Huhu... cari dokter lain deh.', 'Gigiku masih sakit...'],
-  thanks: ['Terima kasih, Dok! Mantap!', 'Wah, enak sekali sekarang!', 'Dokter hebat!', 'Senyumku kembali!'],
+  thanks: ['Terima kasih, Dokter! Mantap!', 'Wah, enak sekali sekarang!', 'Dokter hebat!', 'Senyumku kembali!'],
   numb: ['Bibirku kebas... hehe', 'Mmm, mati rasa...'],
-  stepOk: ['Bagus, Dok!', 'Rapi sekali!', 'Lanjut, Dok!', 'Mantap!'],
-  scared: ['D-Dok... aku takut...', 'Jangan sakit ya, Dok...', 'Hiii... alatnya serem!'],
-  calmed: ['Oke Dok... aku siap.', 'Hehe, sudah tidak takut.', 'Makasih, Dok...'],
-  chat: ['Dok, tahu tidak? Kucingku bisa salto.', 'Kemarin aku makan bakso 3 mangkok!', 'Dok sudah nonton drama baru?', 'Aaa... ehh, eh, maaf Dok...', 'Dok, ini lama tidak?', 'Mmm-hmm... aa... (ngobrol terus)'],
-  vipHello: ['Saya VIP, Dok. Yang cepat ya!', 'Jadwal saya padat, Dok!'],
-  kidHello: ['Halo Dokter! Aku berani lho!', 'Dok, nanti dapat stiker ya?'],
-  kidThanks: ['Yeay! Dapat stiker!', 'Aku pemberani kan, Dok?'],
+  stepOk: ['Bagus, Dokter!', 'Rapi sekali!', 'Lanjut, Dokter!', 'Mantap!'],
+  scared: ['D-Dokter... aku takut...', 'Jangan sakit ya, Dokter...', 'Hiii... alatnya serem!'],
+  calmed: ['Oke Dokter... aku siap.', 'Hehe, sudah tidak takut.', 'Makasih, Dokter...'],
+  chat: ['Dokter, tahu tidak? Kucingku bisa salto.', 'Kemarin aku makan bakso 3 mangkok!', 'Dokter sudah nonton drama baru?', 'Aaa... ehh, eh, maaf Dokter...', 'Dokter, ini lama tidak?', 'Mmm-hmm... aa... (ngobrol terus)'],
+  vipHello: ['Saya VIP, Dokter. Yang cepat ya!', 'Jadwal saya padat, Dokter!'],
+  kidHello: ['Halo Dokter! Aku berani lho!', 'Dokter, nanti dapat stiker ya?'],
+  kidThanks: ['Yeay! Dapat stiker!', 'Aku pemberani kan, Dokter?'],
   kidPain: ['Huwaaa! Mamaaa!', 'Hiks... sakit...'],
   waitBored: ['Lama sekali...', 'Aku pulang saja deh!', 'Hmph, lain kali saja.'],
   waiting: ['(menunggu...)', 'Masih lama ya?', '(main HP)'],
   phone: ['Halo? Lagi di dokter gigi nih!', 'Iya Ma, nanti aku telepon balik!', 'Halo? Aaa-aaa... nanti ya!'],
   sneeze: ['Ha... ha...', 'HACHOOO!'],
   sleep: ['Zzz...', '(mendengkur)'],
-  hik: ['Hik!', 'Hik! Maaf, Dok... hik!'],
-  rhythmOuch: ['Aw! Pelan, Dok!', 'Ikuti iramanya, Dok!'],
+  hik: ['Hik!', 'Hik! Maaf, Dokter... hik!'],
+  rhythmOuch: ['Aw! Pelan, Dokter!', 'Ikuti iramanya, Dokter!'],
   mirror: ['Wah! Gigiku kinclong!', 'Wow... cantik sekali!', 'Hah! Ini gigiku?!', 'Senyumku keren!'],
   yawn: ['Hoaaam...', '(menguap)'],
-  nurseGive: ['Ini, Dok!', 'Pakai ini, Dok!'],
+  nurseGive: ['Ini, Dokter!', 'Pakai ini, Dokter!'],
 };
 
 /** Suster Nana names the tool (used by the tutorial and after mistakes). */

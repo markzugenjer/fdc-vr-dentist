@@ -95,6 +95,10 @@ const chars = all.reduce((a, l) => a + l.say.length, 0);
 const outDir = path.join(root, 'public/voices');
 const exists = (l) => fs.existsSync(path.join(outDir, l.voice, `${l.file}.mp3`));
 const todo = all.filter((l) => !exists(l));
+// recordings of lines the game no longer says (after a line was changed)
+const wanted = new Set(all.map((l) => `${l.voice}/${l.file}.mp3`));
+const unused = () => (fs.existsSync(outDir) ? fs.readdirSync(outDir, { withFileTypes: true }).filter((d) => d.isDirectory())
+  .flatMap((d) => fs.readdirSync(path.join(outDir, d.name)).filter((f) => f.endsWith('.mp3')).map((f) => `${d.name}/${f}`)).filter((f) => !wanted.has(f)) : []);
 
 if (process.argv.includes('--list')) {
   const per = {};
@@ -103,6 +107,8 @@ if (process.argv.includes('--list')) {
   console.log(`Total: ${all.length} lines, ${chars} characters. Still to make: ${todo.length} lines, ${todo.reduce((a, l) => a + l.say.length, 0)} characters.`);
   fs.writeFileSync(path.join(root, 'voices-lines.csv'), 'voice,file,text\n' + all.map((l) => `${l.voice},${l.file},"${l.say.replace(/"/g, '""')}"`).join('\n') + '\n');
   console.log('All lines written to voices-lines.csv');
+  const old = unused();
+  if (old.length) console.log(`${old.length} old recordings are no longer used; npm run voices removes them.`);
   process.exit(0);
 }
 
@@ -149,6 +155,11 @@ await Promise.all([0, 1].map(async () => {
     }
   }
 }));
+
+// remove recordings of lines the game no longer says
+const old = unused();
+for (const f of old) fs.unlinkSync(path.join(outDir, f));
+if (old.length) console.log(`\nRemoved ${old.length} old recordings.`);
 
 // index the game reads: voice → { key: file }
 const index = { voices: {} };

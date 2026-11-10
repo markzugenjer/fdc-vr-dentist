@@ -266,7 +266,7 @@ export function createClinic(app) {
   const namePanel = makePanel(1.32, 0.96, (c, W, H) => {
     card(c, W, H, { r: 0.07, stroke: P.pink, lw: 10 });
     const pad = W * 0.05;
-    text(c, 'Siapa namamu, Dok?', pad, H * 0.1, { size: H * 0.065, weight: 900, color: P.mintDark });
+    text(c, 'Siapa namamu, Dokter?', pad, H * 0.1, { size: H * 0.065, weight: 900, color: P.mintDark });
     text(c, nameMode === 'event' ? `Mode Event · ${config.eventMinutes} menit` : `Mulai kerja · ${config.patientsPerShift} pasien`, W - pad, H * 0.1, { size: H * 0.04, weight: 800, color: P.pinkDeep, align: 'right' });
     text(c, 'Namamu akan tampil di Papan Skor hari ini.', pad, H * 0.16, { size: H * 0.034, color: P.muted });
     roundRect(c, pad, H * 0.2, W - pad * 2, H * 0.14, H * 0.04);
@@ -313,7 +313,7 @@ export function createClinic(app) {
     namePanel.redraw();
     lbPanel.redraw();
     layout();
-    assistant.say('Tulis namamu dulu ya, Dok!', 2);
+    assistant.say('Tulis namamu dulu ya, Dokter!', 2);
   }
   function startNamed() {
     playerName = niceName(nameText) || `Dokter Tamu ${progress.playsToday() + 1}`;
@@ -368,7 +368,7 @@ export function createClinic(app) {
   const caseIds = Object.keys(CASES);
   const caseLabel = (id) => `${config.cases[id] ? '✓' : '✗'}  ${CASES[id].title}${CASES[id].kidsOnly ? ' (anak)' : ''}`;
   const caseBtns = caseIds.map((id, i) => addSetBtn(caseLabel(id), 'light', 0.37, SET_TOP - i * 0.07, 0.64, () => {
-    if (!config.toggle('cases', id)) { sfx.play('heart'); assistant.say('Minimal satu perawatan harus nyala, Dok!', 2); return; }
+    if (!config.toggle('cases', id)) { sfx.play('heart'); assistant.say('Minimal satu perawatan harus nyala, Dokter!', 2); return; }
     sfx.play('click');
     refreshSettings();
   }));
@@ -601,7 +601,7 @@ export function createClinic(app) {
     if (r.ok) {
       sfx.play(r.bought ? 'unlock' : 'click');
       shopMsg = r.bought ? `Dibeli: ${DECOR[cat].label} ${r.option.name}!` : `Dipakai: ${DECOR[cat].label} ${r.option.name}`;
-      if (r.bought) { assistant.act('clap', 1.4); assistant.say('Cantik, Dok!', 1.4); }
+      if (r.bought) { assistant.act('clap', 1.4); assistant.say('Cantik, Dokter!', 1.4); }
       if (cat === 'uniform') { assistant.act('cheer', 1.2); }
     } else {
       sfx.play('heart');
@@ -1162,7 +1162,7 @@ export function createClinic(app) {
       activate(xj);
       work?.progress('mirror', 1, 0);
       finishStep(null);
-      assistant.say('Itu dia gigi yang sakit, Dok!', 2);
+      assistant.say('Itu dia gigi yang sakit, Dokter!', 2);
       assistant.act('point', 1.4);
     }
   };
@@ -1472,7 +1472,7 @@ export function createClinic(app) {
     hes = 0;
     helped = false;
     helpCost = 0;
-    if (jobs.length > 1) assistant.say('Pasien ini punya 2 masalah, Dok. Bebas mulai dari mana!', 3.2);
+    if (jobs.length > 1) assistant.say('Pasien ini punya 2 masalah, Dokter. Bebas mulai dari mana!', 3.2);
     assistant.lookAt(null);
     if (data.personality === 'scared') {
       state = 'calm';
@@ -1480,7 +1480,7 @@ export function createClinic(app) {
       calmTarget = makeCalmTarget(ch);
       ch.act('shiver', 30);
       ch.say(pick(LINES.scared), 2.4, 'sad');
-      assistant.say('Pasiennya takut, Dok! Arahkan laser ke dia dan tekan trigger.', 3.4);
+      assistant.say('Pasiennya takut, Dokter! Arahkan laser ke dia dan tekan trigger.', 3.4);
       layout();
       refreshCard(true);
       return;
@@ -1517,7 +1517,7 @@ export function createClinic(app) {
     // one funny moment for some patients (never in the tutorial)
     if (mode !== 'tutorial' && config.funny && Math.random() < 0.45) funny = { kind: pick(['sneeze', 'phone', 'sleep', 'hiccup']), at: 3 + Math.random() * 4 };
     if (mode === 'tutorial') tutorialStep();
-    else if (served === 0 && mode === 'shift') assistant.say('Pilih alat di baki, Dok!', 2.2);
+    else if (served === 0 && mode === 'shift') assistant.say('Pilih alat di baki, Dokter!', 2.2);
     layout();
     refreshCard(true);
   }
@@ -1592,7 +1592,7 @@ export function createClinic(app) {
       if (jobs.every((x) => x.done)) { guard(treatmentDone()); return; }
       activate(firstOpen());
       sfx.play('sparkle');
-      assistant.say(`Satu beres! Sekarang ${CASES[caseId].title.toLowerCase()}, Dok.`, 2.4);
+      assistant.say(`Satu beres! Sekarang ${CASES[caseId].title.toLowerCase()}, Dokter.`, 2.4);
       if (mode === 'tutorial') tutorialStep();
       return;
     }
@@ -1613,7 +1613,7 @@ export function createClinic(app) {
     ch.jump = 1;
     ch.shake = 1;
     ch.act(pain ? 'cover' : 'fist', 1.4);
-    ch.say(tut ? 'Eh? Bukan itu, Dok...' : pick(kid ? LINES.kidPain : pain ? LINES.pain : LINES.mad), 1.8, 'angry');
+    ch.say(tut ? 'Eh? Bukan itu, Dokter...' : pick(kid ? LINES.kidPain : pain ? LINES.pain : LINES.mad), 1.8, 'angry');
     sfx.play(pain ? 'ouch' : 'grr');
     if (!tut) sfx.play('heart');
     haptic(pointer, 1, 200);
@@ -1633,7 +1633,7 @@ export function createClinic(app) {
       returnTool(tool);
       await wait(0.6);
       if (mistakes >= maxHearts()) { await leaveSad(); return; }
-      assistant.say(right ? `Dok, coba pakai ${right}!` : `Dok, ${TOOL_HINT.xray}!`, 2.4);
+      assistant.say(right ? `Dokter, coba pakai ${right}!` : `Dokter, ${TOOL_HINT.xray}!`, 2.4);
       assistant.act('point', 1.6);
       if (tut) tutorialStep();
       await wait(0.5);
@@ -1650,7 +1650,7 @@ export function createClinic(app) {
     bHint.userData.setLabel(hintLabel());
     sfx.play('sparkle');
     assistant.act('point', 1.4);
-    if (want.tool === 'xray') { assistant.say('Petunjuk: tekan layar rontgen di sebelah kiri, Dok!', 2.8); return; }
+    if (want.tool === 'xray') { assistant.say('Petunjuk: tekan layar rontgen di sebelah kiri, Dokter!', 2.8); return; }
     hinted = want.tool;
     tray.highlight(want.tool);
     assistant.say(`Petunjuk: pakai ${TOOL_INFO[want.tool].name}, yang bercincin di baki!`, 2.8);
@@ -1690,7 +1690,7 @@ export function createClinic(app) {
       assistant.act('shrug', 1.2);
       await wait(1.2);
       ch.face('aaa');
-      ch.say('Maaf, Dok... hehe', 1.2);
+      ch.say('Maaf, Dokter... hehe', 1.2);
       if (state === 'react') state = 'treat';
     } else if (kind === 'phone') {
       state = 'react';
@@ -1698,17 +1698,17 @@ export function createClinic(app) {
       ch.face('talk');
       ch.act('phone', 3.0);
       ch.say(pick(LINES.phone), 2.8);
-      assistant.say('Sebentar, Dok... pasiennya angkat telepon.', 2.4);
+      assistant.say('Sebentar, Dokter... pasiennya angkat telepon.', 2.4);
       assistant.act('shrug', 1.4);
       await wait(3.0);
       ch.face('aaa');
-      ch.say('Oke, lanjut Dok!', 1.0);
+      ch.say('Oke, lanjut Dokter!', 1.0);
       if (state === 'react') state = 'treat';
     } else if (kind === 'sleep') {
       sleeping = true;
       ch.face('sleep');
       ch.say('Zzz...', 1.6);
-      assistant.say('Hihi, pasiennya tidur, Dok. Pelan-pelan ya.', 2.2);
+      assistant.say('Hihi, pasiennya tidur, Dokter. Pelan-pelan ya.', 2.2);
     } else if (kind === 'hiccup') {
       for (let i = 0; i < 4 && my === token && state !== 'done'; i++) {
         ch.jump = 0.7;
@@ -1789,7 +1789,7 @@ export function createClinic(app) {
     guard(wait(0.45).then(() => takePhoto(r.stars)));
     assistant.act('clap', 2.0);
     assistant.face('happy');
-    assistant.say(comboMult() > 1 ? `COMBO ×${comboMult()}! Luar biasa, Dok!` : 'Hebat, Dok!', 1.8);
+    assistant.say(comboMult() > 1 ? `COMBO ×${comboMult()}! Luar biasa, Dokter!` : 'Hebat, Dokter!', 1.8);
     if (mode === 'event') showPop(`+${r.points}`, r.mult > 1 ? `×${r.mult}` : `${'★'.repeat(r.stars)}`);
     await wait(2.0);
     room.chair.want = 0;
@@ -1922,7 +1922,7 @@ export function createClinic(app) {
     sfx.play('win');
     assistant.act('clap', 2);
     assistant.face('happy');
-    assistant.say(mode === 'tutorial' ? 'Hebat! Sekarang coba Mulai kerja, Dok!' : shift.lost === 0 ? 'Semua pasien senang! Keren!' : 'Kerja bagus, Dok!', 2.8);
+    assistant.say(mode === 'tutorial' ? 'Hebat! Sekarang coba Mulai kerja, Dokter!' : shift.lost === 0 ? 'Semua pasien senang! Keren!' : 'Kerja bagus, Dokter!', 2.8);
     fx.emit('confetti', new THREE.Vector3(0, 2.3, -1.0), 40, { speed: 0.7, size: 0.04, life: 2.4, gravity: 0.7, spread: 1.2 });
   }
 
@@ -1975,7 +1975,7 @@ export function createClinic(app) {
     layout();
     refreshCard(true);
     assistant.face('smiley');
-    assistant.say(m === 'tutorial' ? 'Aku Suster Nana. Ikuti aku ya, Dok!' : m === 'event' ? 'Mode event! 3 menit, ayo cepat!' : 'Ayo mulai, Dok! Pasien pertama datang.', 2.6);
+    assistant.say(m === 'tutorial' ? 'Aku Suster Nana. Ikuti aku ya, Dokter!' : m === 'event' ? 'Mode event! 3 menit, ayo cepat!' : 'Ayo mulai, Dokter! Pasien pertama datang.', 2.6);
     sfx.play('yay');
     callNext();
   }
@@ -2249,7 +2249,7 @@ export function createClinic(app) {
         assistant.act(busy ? 'tidy' : pick(['wave', 'thumbs', 'tidy']), busy ? 2.4 : 1.8);
         if (busy && Math.random() < 0.6) sfx.play('tick');
         assistant.face('smiley');
-        if (state === 'title' && !progress.tutorialDone && Math.random() < 0.6) assistant.say('Baru pertama? Coba Tutorial dulu, Dok!', 2.6);
+        if (state === 'title' && !progress.tutorialDone && Math.random() < 0.6) assistant.say('Baru pertama? Coba Tutorial dulu, Dokter!', 2.6);
       }
     }
     assistant.update(dt);
@@ -2320,7 +2320,7 @@ export function createClinic(app) {
 
   // first screen
   assistant.lookAt(head);
-  assistant.say('Selamat datang di FDC Dental Clinic, Dok!', 3);
+  assistant.say('Selamat datang di FDC Dental Clinic, Dokter!', 3);
   layout();
 
   // debug hooks for testing in a browser console

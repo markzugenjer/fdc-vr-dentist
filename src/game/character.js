@@ -13,7 +13,7 @@ import { FONT, roundRect, wrap } from '../core/ui.js';
  *   c.face('pain')              neutral | happy | aaa | pain | mad | sad | numb | talk
  *   c.act('wave', 1.5)          wave | fist | facepalm | clap | cheer | thumbs | point | shrug | cover | phone | shiver | calm
  *                               scroll | stretch | tidy | mirror | give
- *   c.say('Halo Dok!', 2.5)     speech bubble
+ *   c.say('Halo Dokter!', 2.5)     speech bubble
  */
 
 const geo = new Map();

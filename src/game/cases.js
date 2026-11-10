@@ -128,14 +128,12 @@ export const LINES = {
   kidThanks: ['Yeay! Dapat stiker!', 'Aku pemberani kan, Dokter?'],
   kidPain: ['Huwaaa! Mamaaa!', 'Hiks... sakit...'],
   waitBored: ['Lama sekali...', 'Aku pulang saja deh!', 'Hmph, lain kali saja.'],
-  waiting: ['(menunggu...)', 'Masih lama ya?', '(main HP)'],
   phone: ['Halo? Lagi di dokter gigi nih!', 'Iya Ma, nanti aku telepon balik!', 'Halo? Aaa-aaa... nanti ya!'],
   sneeze: ['Ha... ha...', 'HACHOOO!'],
   sleep: ['Zzz...', '(mendengkur)'],
   hik: ['Hik!', 'Hik! Maaf, Dokter... hik!'],
   rhythmOuch: ['Aw! Pelan, Dokter!', 'Ikuti iramanya, Dokter!'],
   mirror: ['Wah! Gigiku kinclong!', 'Wow... cantik sekali!', 'Hah! Ini gigiku?!', 'Senyumku keren!'],
-  yawn: ['Hoaaam...', '(menguap)'],
   nurseGive: ['Ini, Dokter!', 'Pakai ini, Dokter!'],
 };
 

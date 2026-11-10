@@ -1262,10 +1262,7 @@ export function createClinic(app) {
     w.bar.visible = true;
     ch.face('neutral');
     ch.lookAt(head);
-    if (data.personality === 'chatty') ch.say(pick(LINES.chat), 2.2);
-    else if (data.personality === 'kid') ch.say(pick(LINES.kidHello), 2.2);
-    else if (data.personality === 'vip') ch.say(pick(LINES.vipHello), 2.2, 'angry');
-    else ch.say(pick(LINES.hello), 1.6);
+    // patients on the bench don't talk (it got too crowded): only the one in the chair speaks
     // the chair is free and nobody else is coming: call them right away
     if (state === 'idle') callNext();
   }
@@ -1299,17 +1296,15 @@ export function createClinic(app) {
     } else if (kind === 'yawn') {
       ch.face('yawn');
       ch.act('stretch', 1.8);
-      ch.say(pick(LINES.yawn), 1.4);
       w.idleLeft = 1.8;
     } else if (kind === 'legs') {
       w.idleLeft = 4;
     } else if (kind === 'chat') {
       w.other = other;
-      ch.face('talk');
-      ch.say(pick(LINES.chat), 2.4);
+      ch.face('talk'); // chatting silently with the neighbour
       w.idleLeft = 3;
       // the other one looks back and laughs
-      if (!other.idle) { other.idle = 'chat'; other.other = w; other.idleLeft = 3; guard(wait(1.4).then(() => { if (waiting.includes(other)) { other.ch.face('happy'); other.ch.say('Hahaha!', 1.0, 'happy'); } })); }
+      if (!other.idle) { other.idle = 'chat'; other.other = w; other.idleLeft = 3; guard(wait(1.4).then(() => { if (waiting.includes(other)) { other.ch.face('happy'); other.ch.act('clap', 1.0); } })); }
     }
   }
   function endIdle(w) {
@@ -1332,7 +1327,6 @@ export function createClinic(app) {
     walkers.add(ch);
     ch.face('mad');
     ch.act('fist', 1.2);
-    ch.say(pick(LINES.waitBored), 2.2, 'angry');
     sfx.play('grr');
     combo = 0;
     if (mode === 'shift') { served++; shift.lost++; shift.results.push({ left: true, stars: 0, points: 0 }); }
@@ -2121,7 +2115,6 @@ export function createClinic(app) {
   let frameNo = 0;
   let idleT = 1.5;
   let starPop = 0;
-  let waitTalkT = 4;
   let chatT = 5;
   const assistantLook = new THREE.Vector3();
 
@@ -2179,7 +2172,6 @@ export function createClinic(app) {
     }
 
     // waiting patients: patience drains (not while you read a result card)
-    waitTalkT -= dt;
     for (const w of [...waiting]) {
       if (w.state === 'seated' && playing && state !== 'result') {
         w.patience -= dt / w.max;
@@ -2192,11 +2184,6 @@ export function createClinic(app) {
         drawBar(w.bar, Math.max(0, w.patience));
         w.ch.headWorld(w.bar.position).y += 0.33;
       }
-    }
-    if (waitTalkT <= 0 && waiting.length) {
-      waitTalkT = 5 + Math.random() * 5;
-      const w = pick(waiting);
-      if (w.state === 'seated' && !w.ch.bubble.time) w.ch.say(w.personality === 'chatty' ? pick(LINES.chat) : w.patience < 0.3 ? pick(LINES.waitBored) : pick(LINES.waiting), 2.2);
     }
     for (const ch of walkers) ch.update(dt);
 

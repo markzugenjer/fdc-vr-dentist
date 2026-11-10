@@ -54,7 +54,8 @@ Title screen → **Pengaturan**. Everything is saved on the headset.
 | Salah alat maksimal | 3, 5, 2 (scared patients get one less) |
 | Pasien 2 masalah | Kadang, Sering, Tidak ada |
 | Petunjuk alat | 3, 5, 10, Mati, 1 per round |
-| Momen lucu, Bantuan Suster Nana, Suara pasien | on / off |
+| Momen lucu, Bantuan Suster Nana | on / off |
+| Suara karakter | Suara asli, Bip lucu, Mati |
 | Roda hadiah | Semua mode, Mode Event saja, Mulai kerja saja, Mati |
 | Perawatan yang muncul | tick the treatments you want (at least one) |
 | Tipe pasien | tick Penakut, Cerewet, VIP, Anak-anak (normal patients always come) |
@@ -116,6 +117,34 @@ Before **Mulai kerja** or **Mode Event**, the player types their name on a big k
 - **Hapus semua skor hari ini:** press twice to confirm.
 
 Scores are saved on that headset only. Each Quest has its own board, and a new board starts every day.
+
+## Character voices (ElevenLabs)
+
+Patients and Suster Nana speak their lines with recorded voices.
+- **Voices:** Suster Nana, kids, women and men. Each patient also gets a slightly different speed and pitch.
+- **Any line without a recording** uses the cartoon "bip" voice, so the game always works.
+- **Pengaturan → Suara karakter:** Suara asli / Bip lucu / Mati.
+
+**Making the recordings (on the Mac):**
+1. **Pick 4 voices** in ElevenLabs (Voices → Voice Library, filter Indonesian) and add them to My Voices. Copy each voice's **Voice ID** into `voices.config.json`:
+   - `nana`: a friendly young nurse
+   - `kid`: a child
+   - `woman`
+   - `man`
+
+   `woman` and `man` can each list several IDs, like `["id1", "id2"]`. Each patient then gets one of them, so not every patient sounds the same. The kid voice is a girl's, so all kid patients are girls.
+2. **API key:** ElevenLabs → Developers → API Keys. Create one with Text to Speech access. Put it in a file called `.env.local` in this folder:
+   ```
+   ELEVENLABS_API_KEY=sk_...
+   ```
+   `.env.local` is in `.gitignore`. Never commit it, and never paste the key in a chat.
+3. **Check the lines:** `npm run voices:list` shows every line and the character count (about 11,000 characters) and writes them all to `voices-lines.csv`.
+4. **Make the recordings:** `npm run voices` saves the audio files to `public/voices/` and takes a few minutes.
+5. **Commit and push** `public/voices/`, then check on the Quest.
+
+**Changing lines later:** run `npm run voices` again. Only new or changed lines are made (and cost credits). To redo a line, delete its file from `public/voices/<voice>/`; `voices-lines.csv` shows which file is which line.
+
+**License:** recordings made on a free ElevenLabs account can't be used commercially. For FDC events, use a paid plan; Starter covers 11,000 characters.
 
 ## Booth extras
 
@@ -255,6 +284,8 @@ src/game/progress.js  stars, ranks, unlocks and the score board (saved on the he
 src/game/decor.js  Dekorasi: wall colours, posters, plants, uniform and chair colours
 src/game/config.js settings and their defaults (patients per shift, treatments, patient types...) and the wheel prizes
 src/game/wheel.js  Roda Hadiah, the prize wheel after a round
+src/game/voice.js  plays the recorded character voices (public/voices)
+src/game/voicekey.js  matches a line to its recording
 src/game/photo.js  Foto kenangan: the snapshot camera and the FDC photo card (with QR)
 src/game/leaderboard.js  Papan Skor: draws today's top 10 (title board, wall TV, staff panel)
 ```

@@ -12,6 +12,7 @@ import { progress } from './progress.js';
 import { Decor, DECOR, DECOR_ORDER } from './decor.js';
 import { config, CHOICES, BOOTH } from './config.js';
 import { PhotoBooth, drawPhotoCard } from './photo.js';
+import { Voices } from './voice.js';
 import { PrizeWheel } from './wheel.js';
 import { drawLeaderboard, niceName } from './leaderboard.js';
 import { store } from '../core/util.js';
@@ -73,7 +74,22 @@ export function createClinic(app) {
   assistant.root.position.set(-0.95, 0, -1.15);
   assistant.root.rotation.y = Math.atan2(0.95, 1.15);
   group.add(assistant.root);
-  assistant.onSay = (t, tone) => { if (config.voices) sfx.voice(t, 300, tone); };
+  // ------------------------------------------------------------------ voices
+  // Recorded lines (public/voices, made with ElevenLabs) when there is one, else the cartoon babble.
+  const voices = new Voices(sfx);
+  const voiceFor = (ch, voiceOf, pitch, rate, isMain) => (t, tone) => {
+    if (config.voices === 'off') return;
+    const voice = typeof voiceOf === 'function' ? voiceOf() : voiceOf;
+    if (config.voices === 'real' && voices.files(voice, t)) {
+      voices.speak(ch, voice, t, { rate, priority: isMain() ? 'high' : 'low', volume: isMain() ? 1 : 0.6 }).then((d) => {
+        if (d > 0) { ch.talkT = d; ch.bubble.time = Math.max(ch.bubble.time, d + 0.4); }
+        else if (d === 0) sfx.voice(t, pitch, tone);
+      });
+      return;
+    }
+    sfx.voice(t, pitch, tone);
+  };
+  assistant.onSay = voiceFor(assistant, 'nana', 300, 1, () => true);
   const decor = new Decor({ room, assistant, parent: group });
 
   const head = new THREE.Vector3(); // the player's head, updated every frame
@@ -335,7 +351,7 @@ export function createClinic(app) {
     ['pairs', () => `Pasien 2 masalah: ${choiceLabel('pairs')}`],
     ['funny', () => `Momen lucu: ${config.funny ? 'Nyala' : 'Mati'}`],
     ['nurseHelp', () => `Bantuan Suster Nana: ${config.nurseHelp ? 'Nyala' : 'Mati'}`],
-    ['voices', () => `Suara pasien: ${config.voices ? 'Nyala' : 'Mati'}`],
+    ['voices', () => `Suara karakter: ${choiceLabel('voices')}`],
     ['wheel', () => `Roda hadiah: ${choiceLabel('wheel')}`],
   ];
   const setBtns = [];
@@ -1209,7 +1225,9 @@ export function createClinic(app) {
     // a little gibberish voice: kids high, long hair a bit higher, others lower
     const female = ['long', 'bob', 'pony', 'bun'].includes(data.look.hairStyle);
     const pitch = (data.personality === 'kid' ? 420 : female ? 255 : 150) * (0.9 + Math.random() * 0.2);
-    ch.onSay = (t, tone) => { if (config.voices) sfx.voice(t, pitch, tone); };
+    const base = data.personality === 'kid' ? 'kid' : female ? 'woman' : 'man';
+    const seed = Math.floor(Math.random() * 1000); // which of the recorded voices this patient gets
+    ch.onSay = voiceFor(ch, () => voices.variant(base, seed), pitch, 0.95 + Math.random() * 0.11, () => patient?.ch === ch);
     group.add(ch.root);
     return ch;
   }
@@ -2316,7 +2334,7 @@ export function createClinic(app) {
     get waiting() { return waiting; },
     get shift() { return shift; },
     get combo() { return combo; },
-    tray, start, nextPatient, toTitle, boards, assistant, music, get room() { return room; },
+    tray, start, nextPatient, toTitle, boards, assistant, music, voices, get room() { return room; },
     startShift: () => start('shift'),
     wheel, openWheel, wheelButton, finish, get wheelReady() { return wheelReady; }, photo, takePhoto, photoButton: () => bPhoto.userData.onSelect(),
     hint: () => useHint(),

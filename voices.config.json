@@ -1,0 +1,29 @@
+{
+  "model": "eleven_multilingual_v2",
+  "voices": {
+    "nana": "3AwU3nHsI4YWeBJbz6yn",
+    "kid": "d15jrIAARvF899pDoC6T",
+    "woman": [
+      "XfCZjUv5sDvo6hkmjV6d",
+      "WQ4h6sgS9p2XXvLsESBT"
+    ],
+    "man": [
+      "aJiaMo73BheNakP6EPev",
+      "eESTQeTcGUli0jYysKtx"
+    ]
+  },
+  "settings": {
+    "default": {
+      "stability": 0.45,
+      "similarity_boost": 0.8,
+      "style": 0.35,
+      "use_speaker_boost": true
+    },
+    "nana": {
+      "stability": 0.4,
+      "similarity_boost": 0.8,
+      "style": 0.45,
+      "use_speaker_boost": true
+    }
+  }
+}

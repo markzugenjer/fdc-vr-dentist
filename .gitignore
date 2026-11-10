@@ -6,3 +6,6 @@ dist/
 android/
 *.apk
 *.aab
+# ElevenLabs API key: never commit
+.env.local
+voices-lines.csv

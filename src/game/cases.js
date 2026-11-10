@@ -159,10 +159,11 @@ export const PATIENTS = [
 ];
 
 /** Kids (smaller, cry easily, love stickers). */
+/** Kid patients (all girls: the kid voice is a girl's). */
 export const KIDS = [
-  { name: 'Dika', look: { skin: '#e9b48f', hair: '#2f2420', hairStyle: 'spiky', top: '#9ed9c2', bottom: '#5f7fae' } },
+  { name: 'Dinda', look: { skin: '#e9b48f', hair: '#2f2420', hairStyle: 'bob', top: '#9ed9c2', bottom: '#5f7fae' } },
   { name: 'Nina', look: { skin: '#f3c9a6', hair: '#4a2f25', hairStyle: 'pony', top: '#ffd1a8', bottom: '#e98aa4' } },
-  { name: 'Bima', look: { skin: '#c98f6a', hair: '#1f1a18', hairStyle: 'curly', top: '#a8d8f0', bottom: '#4d6b5e' } },
+  { name: 'Bella', look: { skin: '#c98f6a', hair: '#1f1a18', hairStyle: 'long', top: '#a8d8f0', bottom: '#e8a0c0' } },
   { name: 'Tiara', look: { skin: '#f0c3a0', hair: '#6b4128', hairStyle: 'bun', top: '#f6b9c9', bottom: '#b9a7e8' } },
 ];
 

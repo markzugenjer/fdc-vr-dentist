@@ -16,7 +16,7 @@ export const DEFAULTS = {
   funny: true, // sneezes, phone calls, falling asleep, hiccups
   nurseHelp: true, // Suster Nana hands over the right tool when you hesitate
   hints: 3, // "Petunjuk" presses per round: shows which tool is right (0 = no hint button)
-  voices: true, // gibberish character voices
+  voices: 'real', // character voices: 'real' (recorded, see scripts/voices.mjs) | 'babble' (cartoon beeps) | 'off'
   wheel: 'both', // Roda Hadiah after a round: 'both' (Mulai kerja and Mode Event) | 'event' | 'shift' | 'off'
   askName: true, // ask the player's name before Mulai kerja / Mode Event, for the Papan Skor
   cases: { scaling: true, extraction: true, filling: true, whitening: true, braces: true, rootcanal: true, checkup: true },
@@ -61,6 +61,11 @@ export const CHOICES = {
   ],
   hearts: [2, 3, 5],
   hints: [0, 1, 3, 5, 10],
+  voices: [
+    { id: 'real', label: 'Suara asli' },
+    { id: 'babble', label: 'Bip lucu' },
+    { id: 'off', label: 'Mati' },
+  ],
   wheel: [
     { id: 'both', label: 'Semua mode', modes: ['shift', 'event'] },
     { id: 'event', label: 'Mode Event saja', modes: ['event'] },
@@ -87,6 +92,7 @@ function load() {
     ...saved,
     prizes: sameList ? saved.prizes : defaultPrizes(),
     // older headsets saved the wheel as on/off
+    voices: saved.voices === true ? 'real' : saved.voices === false ? 'off' : saved.voices ?? DEFAULTS.voices,
     wheel: saved.wheel === true ? 'both' : saved.wheel === false ? 'off' : saved.wheel ?? DEFAULTS.wheel,
     cases: { ...DEFAULTS.cases, ...(saved.cases || {}) },
     types: { ...DEFAULTS.types, ...(saved.types || {}) },

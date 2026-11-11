@@ -235,8 +235,8 @@ function drawTv(c, W, H, s) {
   c.fillStyle = '#16302a';
   c.fillRect(0, 0, W, H);
   const pad = W * 0.05;
-  text(c, 'PAPAN SKOR', pad, H * 0.13, { size: H * 0.08, weight: 900, color: P.mint });
-  text(c, 'FDC Dentist', W - pad, H * 0.13, { size: H * 0.06, weight: 700, color: P.pink, align: 'right' });
+  text(c, 'FDC DENTIST VR', pad, H * 0.13, { size: H * 0.08, weight: 900, color: P.mint });
+  text(c, 'Klinik FDC', W - pad, H * 0.13, { size: H * 0.06, weight: 700, color: P.pink, align: 'right' });
   if (s.mode === 'event' && s.timeLeft > 0 && s.timeLeft <= 10) {
     // the last 10 seconds: one giant number for the crowd to count down with
     const sec = Math.ceil(s.timeLeft);
@@ -260,18 +260,11 @@ function drawTv(c, W, H, s) {
     text(c, `Bintang total: ★ ${progress.stars}`, pad, H * 0.32, { size: H * 0.075, weight: 800, color: '#ffffff' });
   }
   if (s.name && s.mode) text(c, `Dokter: ${s.name}`, pad, H * 0.44, { size: H * 0.055, weight: 800, color: P.pink, maxWidth: W - pad * 2 });
-  // today's top 10 (names), in two columns
-  text(c, 'Terbaik hari ini', pad, H * 0.55, { size: H * 0.06, weight: 800, color: P.mint });
-  const top = progress.topToday(10);
-  if (!top.length) text(c, 'Belum ada skor. Ayo main!', pad, H * 0.66, { size: H * 0.055, color: 'rgba(255,255,255,0.7)' });
-  top.forEach((e, i) => {
-    const col = i < 5 ? 0 : 1;
-    const x0 = pad + col * (W / 2 - pad * 0.5);
-    const x1 = col ? W - pad : W / 2 - pad;
-    const y = H * 0.65 + (i % 5) * H * 0.072;
-    text(c, `${i + 1}. ${e.name || 'Dokter Tamu'}`, x0, y, { size: H * 0.05, weight: 700, color: i === 0 ? P.gold : '#ffffff', maxWidth: W * 0.3 });
-    text(c, `${e.score}`, x1, y, { size: H * 0.052, weight: 900, color: i === 0 ? P.gold : '#ffffff', align: 'right' });
-  });
+  // bottom half: an invitation for the queue (no public leaderboard)
+  c.fillStyle = 'rgba(255,255,255,0.06)';
+  c.fillRect(pad, H * 0.56, W - pad * 2, H * 0.34);
+  text(c, s.mode ? 'Rawat pasien dengan alat yang tepat!' : 'Ayo jadi dokter gigi FDC!', W / 2, H * 0.7, { size: H * 0.07, weight: 900, color: '#ffffff', align: 'center', maxWidth: W - pad * 3 });
+  text(c, 'Selesai main, dapat foto kenangan + QR download', W / 2, H * 0.82, { size: H * 0.05, weight: 700, color: P.mint, align: 'center', maxWidth: W - pad * 3 });
 }
 
 function drawRank(c, W, H) {

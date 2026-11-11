@@ -14,7 +14,7 @@ import { config, CHOICES, BOOTH } from './config.js';
 import { PhotoBooth, drawPhotoCard, uploadCard, downloadQR } from './photo.js';
 import { Voices } from './voice.js';
 import { PrizeWheel } from './wheel.js';
-import { drawLeaderboard, niceName } from './leaderboard.js';
+import { niceName } from './leaderboard.js';
 import { store } from '../core/util.js';
 import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, SENIOR, FACTS, PERSONALITIES, TOOL_HINT, PAIRS, pick } from './cases.js';
 import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from '../core/ui.js';
@@ -252,20 +252,9 @@ export function createClinic(app) {
     countPanel.mesh.scale.setScalar(1 + countPulse * 0.35);
   }
 
-  // ------------------------------------------------------------------ Papan Skor (today's top 10, beside the title menu)
-  // The booth TV shows the headset through casting, so this board is what the queue sees
-  // between players. It also shows after a round, with the player's line highlighted.
+  // the player's name goes on the Foto kenangan card (no public leaderboard)
   let playerName = '';
   let lastEntry = null;
-  const lbPanel = makePanel(0.62, 0.84, (c, W, H) => {
-    card(c, W, H, { r: 0.07, stroke: P.gold, lw: 10 });
-    const n = progress.playsToday();
-    const mark = state === 'final' ? lastEntry : null;
-    drawLeaderboard(c, W, H, { list: progress.topToday(10), mark, markPlace: mark ? progress.placeToday(mark) : 0, footer: n ? `${n} dokter sudah main hari ini` : 'Tulis namamu, masuk papan skor!' });
-  });
-  lbPanel.mesh.position.set(1.0, 1.6, -1.0);
-  lbPanel.mesh.rotation.y = -0.38;
-  group.add(lbPanel.mesh);
 
   // ------------------------------------------------------------------ name entry (before Mulai kerja / Mode Event)
   const NAME_MAX = 14;
@@ -277,7 +266,7 @@ export function createClinic(app) {
     const pad = W * 0.05;
     text(c, 'Siapa namamu, Dokter?', pad, H * 0.1, { size: H * 0.065, weight: 900, color: P.mintDark });
     text(c, nameMode === 'event' ? `Mode Event · ${config.eventMinutes} menit` : `Mulai kerja · ${config.patientsPerShift} pasien`, W - pad, H * 0.1, { size: H * 0.04, weight: 800, color: P.pinkDeep, align: 'right' });
-    text(c, 'Namamu akan tampil di Papan Skor hari ini.', pad, H * 0.16, { size: H * 0.034, color: P.muted });
+    text(c, 'Namamu akan tampil di foto kenanganmu.', pad, H * 0.16, { size: H * 0.034, color: P.muted });
     roundRect(c, pad, H * 0.2, W - pad * 2, H * 0.14, H * 0.04);
     c.fillStyle = P.mintSoft;
     c.fill();
@@ -323,7 +312,6 @@ export function createClinic(app) {
     nameText = '';
     bigContent = { kind: 'name' };
     namePanel.redraw();
-    lbPanel.redraw();
     layout();
     doctor.say('Tulis namamu dulu ya, Dokter!', 2);
   }
@@ -411,7 +399,7 @@ export function createClinic(app) {
   }
   addSetBtn('Selesai ✓', 'mint', 0.56, 0.48, 0.28, () => closeSettings());
   addSetBtn('Hadiah roda ›', 'pink', -0.19, SET_TOP - SETTINGS.length * ROW_GAP - 0.03, 0.34, () => openPrizes());
-  addSetBtn('Papan skor & nama ›', 'pink', 0.37, SET_TOP - SETTINGS.length * ROW_GAP - 0.03, 0.64, () => openScores());
+  addSetBtn('Nama pemain ›', 'pink', 0.37, SET_TOP - SETTINGS.length * ROW_GAP - 0.03, 0.64, () => openScores());
   function refreshSettings() {
     SETTINGS.forEach(([, label], i) => cycleBtns[i].userData.setLabel(label()));
     caseIds.forEach((id, i) => caseBtns[i].userData.setLabel(caseLabel(id)));
@@ -526,18 +514,17 @@ export function createClinic(app) {
     refreshPrizes();
   }
 
-  // ------------------------------------------------------------------ Papan skor settings (booth staff)
+  // ------------------------------------------------------------------ player name settings (booth staff)
   let clearArmed = false;
   const scorePanel = makePanel(1.5, 1.12, (c, W, H) => {
     card(c, W, H, { r: 0.06, stroke: P.gold, lw: 10 });
     const pad = W * 0.04;
-    text(c, 'Papan Skor', pad, H * 0.075, { size: H * 0.055, weight: 800, color: P.mintDark });
-    text(c, 'Untuk petugas booth. Tersimpan di headset ini.', W * 0.27, H * 0.075, { size: H * 0.026, color: P.muted });
-    // today's list on the right half
-    c.save();
-    c.translate(W * 0.5, H * 0.1);
-    drawLeaderboard(c, W * 0.48, H * 0.86, { list: progress.topToday(10), footer: `${progress.playsToday()} ronde hari ini` });
-    c.restore();
+    text(c, 'Nama pemain', pad, H * 0.075, { size: H * 0.055, weight: 800, color: P.mintDark });
+    text(c, 'Untuk petugas booth. Tersimpan di headset ini.', W * 0.31, H * 0.075, { size: H * 0.026, color: P.muted });
+    // the name and score go on the Foto kenangan card; the rank there counts today's rounds
+    text(c, `${progress.playsToday()} ronde hari ini`, W * 0.54, H * 0.2, { size: H * 0.05, weight: 800, color: P.ink });
+    text(c, 'Nama & skor pemain muncul di foto kenangan.', W * 0.54, H * 0.28, { size: H * 0.03, color: P.muted, maxWidth: W * 0.42 });
+    text(c, 'Peringkat di foto dihitung dari ronde hari ini.', W * 0.54, H * 0.33, { size: H * 0.03, color: P.muted, maxWidth: W * 0.42 });
     const last = progress.board().reduce((a, b) => (!a || b.at > a.at ? b : a), null);
     text(c, 'Ronde terakhir:', pad, H * 0.5, { size: H * 0.03, weight: 800, color: P.pinkDeep });
     text(c, last ? `${last.name || 'Tanpa nama'} · ${last.score}` : '-', pad, H * 0.55, { size: H * 0.034, weight: 700, color: P.ink, maxWidth: W * 0.44 });
@@ -571,7 +558,6 @@ export function createClinic(app) {
     bAsk.userData.setLabel(askLabel());
     bClear.userData.setLabel(clearArmed ? 'Yakin? Tekan sekali lagi' : 'Hapus semua skor hari ini');
     scorePanel.redraw();
-    lbPanel.redraw();
     layout();
   }
   function openScores() {
@@ -896,7 +882,6 @@ export function createClinic(app) {
     show(nameBtns, nm);
     scorePanel.mesh.visible = sc;
     show(scoreBtns, sc);
-    lbPanel.mesh.visible = (t && !shop && !sets && !prz && !sc) || (f && mode !== 'tutorial');
     setPanel.mesh.visible = sets;
     show(setBtns, sets);
     prizePanel.mesh.visible = prz;
@@ -1955,7 +1940,6 @@ export function createClinic(app) {
     }
     for (const w of [...waiting]) { waiting.splice(waiting.indexOf(w), 1); group.remove(w.bar); w.state = 'leaving'; walkers.add(w.ch); guard((async () => { await w.ch.standUp(w.seat.front); doorOpen(); await w.ch.walkTo([{ x: 1.7, z: -2.5 }, DOOR_IN, DOOR_OUT], { speed: 1.1 }); doorClose(); removeCharacter(w.ch); })()); }
     bigContent = { kind: 'final', newBest, unlocked, rankUp, patients: mode === 'event' ? shift.results.length : config.patientsPerShift, prize: null, place: lastEntry && mode !== 'tutorial' ? progress.placeToday(lastEntry) : 0, plays: progress.playsToday() };
-    lbPanel.redraw();
     wheelReady = config.wheelFor(mode) && config.activePrizes().length > 0;
     big.redraw();
     layout();
@@ -2032,7 +2016,6 @@ export function createClinic(app) {
     bigContent = { kind: 'title' };
     clinicTime = 9.5;
     big.redraw();
-    lbPanel.redraw();
     layout();
     boards.rank.redraw();
   }

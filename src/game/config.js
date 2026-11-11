@@ -18,7 +18,7 @@ export const DEFAULTS = {
   hints: 3, // "Petunjuk" presses per round: shows which tool is right (0 = no hint button)
   voices: 'real', // character voices: 'real' (recorded, see scripts/voices.mjs) | 'babble' (cartoon beeps) | 'off'
   wheel: 'both', // Roda Hadiah after a round: 'both' (Mulai kerja and Mode Event) | 'event' | 'shift' | 'off'
-  askName: true, // ask the player's name before Mulai kerja / Mode Event, for the Papan Skor
+  askName: true, // ask the player's name before Mulai kerja / Mode Event, for the Foto kenangan card
   cases: { scaling: true, extraction: true, filling: true, whitening: true, braces: true, rootcanal: true, checkup: true },
   types: { scared: true, chatty: true, vip: true, kid: true },
 };

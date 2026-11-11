@@ -67,7 +67,12 @@ export class PhotoBooth {
 }
 
 /** The framed photo card (landscape): photo on the left, name / score / prize / QR on the right. */
-export function drawPhotoCard(c, W, H, { photo, name, score, place, plays, prize, link, eventName = 'FDC Fest' }) {
+/**
+ * qr: { link, lines, footer } — what the QR in the corner does:
+ *   the photo's download link (when the upload worked), or the FDC booking link.
+ * qr: { waiting: true } shows "Menyiapkan QR..." while the photo uploads.
+ */
+export function drawPhotoCard(c, W, H, { photo, name, score, place, plays, prize, qr, eventName = 'FDC Fest' }) {
   // frame
   c.fillStyle = '#ffffff';
   roundRect(c, 4, 4, W - 8, H - 8, H * 0.05);
@@ -119,17 +124,23 @@ export function drawPhotoCard(c, W, H, { photo, name, score, place, plays, prize
   const qs = H * 0.25;
   const qx = rx;
   const qy = H * 0.66;
-  drawQR(c, link, qx, qy, qs);
   const tx = qx + qs + W * 0.012;
   const tw = W - tx - W * 0.03;
-  text(c, 'Scan untuk', tx, qy + qs * 0.3, { size: H * 0.033, weight: 800, color: P.pinkDeep, maxWidth: tw });
-  text(c, 'booking di', tx, qy + qs * 0.5, { size: H * 0.033, weight: 800, color: P.pinkDeep, maxWidth: tw });
-  text(c, 'FDC Dental', tx, qy + qs * 0.7, { size: H * 0.033, weight: 800, color: P.pinkDeep, maxWidth: tw });
-  text(c, 'Clinic', tx, qy + qs * 0.9, { size: H * 0.033, weight: 800, color: P.pinkDeep, maxWidth: tw });
+  if (qr?.waiting) {
+    c.fillStyle = P.mintSoft;
+    roundRect(c, qx, qy, qs, qs, qs * 0.08);
+    c.fill();
+    text(c, 'QR', qx + qs / 2, qy + qs * 0.45, { size: qs * 0.22, weight: 900, color: P.mintDark, align: 'center' });
+    text(c, 'sebentar...', qx + qs / 2, qy + qs * 0.66, { size: qs * 0.11, weight: 700, color: P.muted, align: 'center' });
+    ['Menyiapkan', 'link foto...'].forEach((l, i) => text(c, l, tx, qy + qs * (0.4 + i * 0.2), { size: H * 0.033, weight: 800, color: P.mintDark, maxWidth: tw }));
+  } else {
+    drawQR(c, qr.link, qx, qy, qs);
+    qr.lines.forEach((l, i) => text(c, l, tx, qy + qs * (0.3 + i * 0.2), { size: H * 0.033, weight: 800, color: P.pinkDeep, maxWidth: tw }));
+  }
   // footer under the photo
   const d = new Date();
   const date = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-  text(c, `Foto layar TV ini, bagikan & tag FDC Dental Clinic · ${date}`, px, H * 0.95, { size: H * 0.034, weight: 700, color: P.muted, maxWidth: W * 0.6 });
+  text(c, `${qr?.footer || 'Bagikan & tag FDC Dental Clinic'} · ${date}`, px, H * 0.95, { size: H * 0.034, weight: 700, color: P.muted, maxWidth: W * 0.6 });
 }
 
 function drawToothSticker(c, x, y, r) {
@@ -163,4 +174,30 @@ function drawQR(c, url, x, y, size) {
   c.fillRect(x, y, size, size);
   c.fillStyle = '#1d2a25';
   for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (qr.isDark(r, k)) c.fillRect(Math.floor(x + (k + 2) * cell), Math.floor(y + (r + 2) * cell), Math.ceil(cell), Math.ceil(cell));
+}
+
+/** The QR choices for the card. */
+export const bookingQR = (link) => ({ link, lines: ['Scan untuk', 'booking di', 'FDC Dental', 'Clinic'], footer: 'Foto layar TV ini, bagikan & tag FDC Dental Clinic' });
+export const downloadQR = (link) => ({ link, lines: ['Scan untuk', 'download', 'fotomu!'], footer: 'Scan QR untuk simpan fotomu, bagikan & tag FDC Dental Clinic' });
+
+/**
+ * Upload the finished photo card (JPEG) to the booth's Google Drive through the Apps Script web app
+ * (see scripts/photo-upload.gs and the README). Resolves to a direct download link, or null when
+ * uploading isn't set up, the headset is offline, or it takes longer than 15 s.
+ */
+export async function uploadCard(canvas, { url, key, name }) {
+  if (!url) return null;
+  const image = canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    // a plain text body keeps it a "simple" request, so Apps Script needs no CORS preflight
+    const res = await fetch(url, { method: 'POST', body: JSON.stringify({ key, name, image }), signal: ctrl.signal });
+    const j = await res.json();
+    return j && j.download ? j.download : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }

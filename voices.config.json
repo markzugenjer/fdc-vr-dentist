@@ -2,6 +2,7 @@
   "model": "eleven_multilingual_v2",
   "voices": {
     "nana": "3AwU3nHsI4YWeBJbz6yn",
+    "senior": "ffTJE9l3Kt2ipEM32UOc",
     "kid": "d15jrIAARvF899pDoC6T",
     "woman": [
       "XfCZjUv5sDvo6hkmjV6d",
@@ -23,6 +24,12 @@
       "stability": 0.4,
       "similarity_boost": 0.8,
       "style": 0.45,
+      "use_speaker_boost": true
+    },
+    "senior": {
+      "stability": 0.5,
+      "similarity_boost": 0.8,
+      "style": 0.3,
       "use_speaker_boost": true
     }
   }

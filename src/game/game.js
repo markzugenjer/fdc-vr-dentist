@@ -11,12 +11,12 @@ import { buildBoards } from './boards.js';
 import { progress } from './progress.js';
 import { Decor, DECOR, DECOR_ORDER } from './decor.js';
 import { config, CHOICES, BOOTH } from './config.js';
-import { PhotoBooth, drawPhotoCard } from './photo.js';
+import { PhotoBooth, drawPhotoCard, uploadCard, bookingQR, downloadQR } from './photo.js';
 import { Voices } from './voice.js';
 import { PrizeWheel } from './wheel.js';
 import { drawLeaderboard, niceName } from './leaderboard.js';
 import { store } from '../core/util.js';
-import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, FACTS, PERSONALITIES, TOOL_HINT, PAIRS, pick } from './cases.js';
+import { CASES, LINES, PATIENTS, KIDS, ASSISTANT, SENIOR, FACTS, PERSONALITIES, TOOL_HINT, PAIRS, pick } from './cases.js';
 import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from '../core/ui.js';
 
 /**
@@ -26,7 +26,7 @@ import { makePanel, makeButton, tickButtons, text, card, wrap, roundRect } from 
  * the chair one by one and pick the right instrument for each step of their treatment. Wrong
  * instruments hurt (or annoy) them; too many and they walk out. Perfect patients in a row build a
  * combo. Three modes:
- *   - Tutorial: Suster Nana shows every step and which tool to take.
+ *   - Tutorial: Dokter Ratna (senior dentist) explains every step and which tool to take.
  *   - Shift: 5 patients, a result card after each one.
  *   - Event: 3 minutes, as many patients as you can, for a score board on the room TV.
  */
@@ -70,10 +70,18 @@ export function createClinic(app) {
   const boards = buildBoards(app, group);
   boards.setRoomStyle(room.style);
 
+  // Suster Nana stands to the right of the tool tray. She stays quiet, hands tools over
+  // (Bantuan Suster Nana) and only speaks when the player asks for a hint.
   const assistant = new Character({ height: 1.06, badge: 'fdc', ...ASSISTANT.look });
-  assistant.root.position.set(-0.95, 0, -1.15);
-  assistant.root.rotation.y = Math.atan2(0.95, 1.15);
+  assistant.root.position.set(1.38, 0, -0.12);
+  assistant.root.rotation.y = Math.atan2(0 - 1.38, -0.55 + 0.12);
   group.add(assistant.root);
+  // Dokter Ratna, the senior dentist, stands by the chair and does all the talking:
+  // welcome, instructions, praise, the tutorial.
+  const doctor = new Character({ height: 1.12, badge: 'drg', ...SENIOR.look });
+  doctor.root.position.set(-0.95, 0, -1.15);
+  doctor.root.rotation.y = Math.atan2(0.95, 1.15);
+  group.add(doctor.root);
   // ------------------------------------------------------------------ voices
   // Recorded lines (public/voices, made with ElevenLabs) when there is one, else the cartoon babble.
   const voices = new Voices(sfx);
@@ -90,6 +98,7 @@ export function createClinic(app) {
     sfx.voice(t, pitch, tone);
   };
   assistant.onSay = voiceFor(assistant, 'nana', 300, 1, () => true);
+  doctor.onSay = voiceFor(doctor, 'senior', 240, 1, () => true);
   const decor = new Decor({ room, assistant, parent: group });
 
   const head = new THREE.Vector3(); // the player's head, updated every frame
@@ -313,7 +322,7 @@ export function createClinic(app) {
     namePanel.redraw();
     lbPanel.redraw();
     layout();
-    assistant.say('Tulis namamu dulu ya, Dokter!', 2);
+    doctor.say('Tulis namamu dulu ya, Dokter!', 2);
   }
   function startNamed() {
     playerName = niceName(nameText) || `Dokter Tamu ${progress.playsToday() + 1}`;
@@ -368,7 +377,7 @@ export function createClinic(app) {
   const caseIds = Object.keys(CASES);
   const caseLabel = (id) => `${config.cases[id] ? '✓' : '✗'}  ${CASES[id].title}${CASES[id].kidsOnly ? ' (anak)' : ''}`;
   const caseBtns = caseIds.map((id, i) => addSetBtn(caseLabel(id), 'light', 0.37, SET_TOP - i * 0.07, 0.64, () => {
-    if (!config.toggle('cases', id)) { sfx.play('heart'); assistant.say('Minimal satu perawatan harus nyala, Dokter!', 2); return; }
+    if (!config.toggle('cases', id)) { sfx.play('heart'); doctor.say('Minimal satu perawatan harus nyala, Dokter!', 2); return; }
     sfx.play('click');
     refreshSettings();
   }));
@@ -601,7 +610,7 @@ export function createClinic(app) {
     if (r.ok) {
       sfx.play(r.bought ? 'unlock' : 'click');
       shopMsg = r.bought ? `Dibeli: ${DECOR[cat].label} ${r.option.name}!` : `Dipakai: ${DECOR[cat].label} ${r.option.name}`;
-      if (r.bought) { assistant.act('clap', 1.4); assistant.say('Cantik, Dokter!', 1.4); }
+      if (r.bought) { assistant.act('clap', 1.4); doctor.say('Cantik, Dokter!', 1.4); }
       if (cat === 'uniform') { assistant.act('cheer', 1.2); }
     } else {
       sfx.play('heart');
@@ -698,23 +707,48 @@ export function createClinic(app) {
   // ------------------------------------------------------------------ Foto kenangan (photo card after the round)
   const photo = new PhotoBooth(app.renderer, app.scene);
   let photoOpen = false;
+  let photoLink = null; // this round's download link: undefined while uploading, null if there is none
+  const cardInfo = () => ({
+    photo: photo.canvas, name: playerName, score: shift.score, place: bigContent.place || 0, plays: bigContent.plays || 0,
+    prize: bigContent.prize || '', eventName: BOOTH.eventName,
+  });
   const photoPanel = makePanel(1.3, 0.78, (c, W, H) => {
     if (!photo.has) return;
-    drawPhotoCard(c, W, H, {
-      photo: photo.canvas, name: playerName, score: shift.score, place: bigContent.place || 0, plays: bigContent.plays || 0,
-      prize: bigContent.prize || '', link: BOOTH.link, eventName: BOOTH.eventName,
-    });
+    const qr = photoLink === undefined ? { waiting: true } : photoLink ? downloadQR(photoLink) : bookingQR(BOOTH.link);
+    drawPhotoCard(c, W, H, { ...cardInfo(), qr });
   });
+  /** Upload the card (with the FDC booking QR on it) once per round, then show its download QR. */
+  async function shareCard() {
+    if (!BOOTH.photoUploadUrl || photoLink !== null) return;
+    photoLink = undefined;
+    photoPanel.redraw();
+    const round = token;
+    const c = document.createElement('canvas');
+    c.width = 1600;
+    c.height = 960;
+    drawPhotoCard(c.getContext('2d'), c.width, c.height, { ...cardInfo(), qr: { ...bookingQR(BOOTH.link), footer: 'Bagikan & tag FDC Dental Clinic' } });
+    const stamp = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 16).replace(/[-:T]/g, '');
+    const link = await uploadCard(c, { url: BOOTH.photoUploadUrl, key: BOOTH.photoUploadKey, name: `FDC-${stamp}-${(playerName || 'Dokter').replace(/[^A-Za-z0-9]+/g, '-')}.jpg` });
+    if (round !== token) return; // a new round started meanwhile
+    photoLink = link;
+    photoPanel.redraw();
+    if (link) doctor.say('Scan QR-nya untuk download fotomu, Dokter!', 2.6);
+  }
   photoPanel.mesh.position.copy(FRONT);
   photoPanel.mesh.visible = false;
   group.add(photoPanel.mesh);
   const bPhoto = btn('Foto kenangan', 'pink', 0, ROW2, () => {
     photoOpen = !photoOpen;
-    if (photoOpen) { photoPanel.redraw(); sfx.play('sparkle'); assistant.say('Cekrek! Foto layar TV-nya ya!', 2.4); }
+    if (photoOpen) {
+      photoPanel.redraw();
+      sfx.play('sparkle');
+      if (BOOTH.photoUploadUrl) { doctor.say('Cekrek! Fotonya disiapkan dulu ya.', 2.2); shareCard(); }
+      else doctor.say('Cekrek! Foto layar TV-nya ya!', 2.4);
+    }
     bPhoto.userData.setLabel(photoOpen ? 'Lihat skor' : 'Foto kenangan');
     layout();
   }, 0.5);
-  /** Snapshot of the patient cheering, from a camera in front of the chair (Suster Nana in the frame too). */
+  /** Snapshot of the patient cheering, from a camera in front of the chair (Dokter Ratna in the frame too). */
   function takePhoto(stars) {
     if (!patient || mode === 'tutorial' || demo) return;
     const h = patient.ch.headWorld(new THREE.Vector3());
@@ -735,7 +769,9 @@ export function createClinic(app) {
     bWheelGo.userData.setLabel('Lanjut');
     assistant.act('clap', 2);
     assistant.face('happy');
-    assistant.say(`Selamat! Kamu dapat ${prize.text}!`, 3);
+    doctor.act('clap', 2);
+    doctor.face('happy');
+    doctor.say(`Selamat! Kamu dapat ${prize.text}!`, 3);
     try {
       const log = store.get('fdc.dentist.prizes', {});
       log[prize.text] = (log[prize.text] || 0) + 1;
@@ -749,8 +785,8 @@ export function createClinic(app) {
     wheelOpen = true;
     bWheelGo.userData.setLabel('PUTAR!');
     sfx.play('sparkle');
-    assistant.act('point', 1.6);
-    assistant.say('Waktunya Roda Hadiah! Tekan PUTAR!', 2.6);
+    doctor.act('point', 1.6);
+    doctor.say('Waktunya Roda Hadiah! Tekan PUTAR!', 2.6);
     layout();
   }
   function wheelButton() {
@@ -902,7 +938,7 @@ export function createClinic(app) {
       const lines = [
         ['Mulai kerja', `Shift ${config.patientsPerShift} pasien. Pasien menunggu di bangku, jangan biarkan bosan!`],
         ['Mode Event', `${config.eventMinutes} menit, sebanyak mungkin pasien. Skor tampil di TV.`],
-        ['Tutorial', 'Suster Nana menunjukkan alat yang tepat untuk setiap langkah.'],
+        ['Tutorial', 'Dokter Ratna menunjukkan alat yang tepat untuk setiap langkah.'],
       ];
       lines.forEach(([a, b], i) => {
         const y = H * 0.43 + i * H * 0.1;
@@ -1101,7 +1137,7 @@ export function createClinic(app) {
     if (hinted && tool.id === hinted) { hinted = null; tray.highlight(null); }
     if (mode === 'tutorial' && state === 'treat') {
       const want = curStep(job)?.tool;
-      if (tool.id === want) { tray.highlight(null); assistant.say('Bagus! Dekatkan ujungnya ke cincin pink di mulut pasien, lalu tahan.', 3.2); }
+      if (tool.id === want) { tray.highlight(null); doctor.say('Bagus! Dekatkan ujungnya ke cincin pink di mulut pasien, lalu tahan.', 3.2); }
     }
   };
   function returnTool(tool) {
@@ -1162,8 +1198,8 @@ export function createClinic(app) {
       activate(xj);
       work?.progress('mirror', 1, 0);
       finishStep(null);
-      assistant.say('Itu dia gigi yang sakit, Dokter!', 2);
-      assistant.act('point', 1.4);
+      doctor.say('Itu dia gigi yang sakit, Dokter!', 2);
+      doctor.act('point', 1.4);
     }
   };
 
@@ -1460,13 +1496,13 @@ export function createClinic(app) {
     jobs = makeJobs(data, ch);
     job = null;
     activate(jobs[0]);
-    for (const j of jobs) j.work.onCount = (n) => { if (n % 2 === 0 || n === 12) assistant.say(`${n}!`, 0.6); };
+    for (const j of jobs) j.work.onCount = (n) => { if (n % 2 === 0 || n === 12) doctor.say(`${n}!`, 0.6); };
     const xj = jobs.find((j) => j.steps.some((st) => st.tool === 'xray'));
     if (xj) boards.xray.show(xj.caseId); else boards.xray.clear();
     hes = 0;
     helped = false;
     helpCost = 0;
-    if (jobs.length > 1) assistant.say('Pasien ini punya 2 masalah, Dokter. Bebas mulai dari mana!', 3.2);
+    if (jobs.length > 1) doctor.say('Pasien ini punya 2 masalah, Dokter. Bebas mulai dari mana!', 3.2);
     assistant.lookAt(null);
     if (data.personality === 'scared') {
       state = 'calm';
@@ -1474,7 +1510,7 @@ export function createClinic(app) {
       calmTarget = makeCalmTarget(ch);
       ch.act('shiver', 30);
       ch.say(pick(LINES.scared), 2.4, 'sad');
-      assistant.say('Pasiennya takut, Dokter! Arahkan laser ke dia dan tekan trigger.', 3.4);
+      doctor.say('Pasiennya takut, Dokter! Arahkan laser ke dia dan tekan trigger.', 3.4);
       layout();
       refreshCard(true);
       return;
@@ -1489,7 +1525,7 @@ export function createClinic(app) {
     haptic(pointer, 0.3, 60);
     const ch = patient.ch;
     fx.emit('heart', ch.headWorld(tmp).add(new THREE.Vector3(0, 0.22, 0)), 3, { speed: 0.2, size: 0.05, up: 0.3, life: 1.1 });
-    assistant.act('calm', 1.0);
+    doctor.act('calm', 1.0);
     refreshCard(true);
     if (calmLeft > 0) { ch.say(calmLeft === 1 ? 'Hmm... sedikit lagi...' : 'Hiks... beneran tidak sakit?', 1.4, 'sad'); return; }
     calmBonus = 50;
@@ -1511,7 +1547,7 @@ export function createClinic(app) {
     // one funny moment for some patients (never in the tutorial)
     if (mode !== 'tutorial' && config.funny && Math.random() < 0.45) funny = { kind: pick(['sneeze', 'phone', 'sleep', 'hiccup']), at: 3 + Math.random() * 4 };
     if (mode === 'tutorial') tutorialStep();
-    else if (served === 0 && mode === 'shift') assistant.say('Pilih alat di baki, Dokter!', 2.2);
+    else if (served === 0 && mode === 'shift') doctor.say('Pilih alat di baki, Dokter!', 2.2);
     layout();
     refreshCard(true);
   }
@@ -1519,14 +1555,14 @@ export function createClinic(app) {
   function tutorialStep() {
     const step = curStep(job);
     if (!step) return;
-    if (step.tool === 'xray') { assistant.say('Tekan layar rontgen di sebelah kiri!', 3); return; }
+    if (step.tool === 'xray') { doctor.say('Tekan layar rontgen di sebelah kiri!', 3); return; }
     tray.highlight(step.tool);
     const name = TOOL_INFO[step.tool].name;
     const lines = [
       `Langkah ${stepIdx + 1}: ${step.text.toLowerCase()}. Ambil ${name}, yang bercincin di baki!`,
     ];
-    assistant.say(lines[0], 3.6);
-    assistant.act('point', 1.6);
+    doctor.say(lines[0], 3.6);
+    doctor.act('point', 1.6);
   }
 
   // ------------------------------------------------------------------ treating
@@ -1586,12 +1622,12 @@ export function createClinic(app) {
       if (jobs.every((x) => x.done)) { guard(treatmentDone()); return; }
       activate(firstOpen());
       sfx.play('sparkle');
-      assistant.say(`Satu beres! Sekarang ${CASES[caseId].title.toLowerCase()}, Dokter.`, 2.4);
+      doctor.say(`Satu beres! Sekarang ${CASES[caseId].title.toLowerCase()}, Dokter.`, 2.4);
       if (mode === 'tutorial') tutorialStep();
       return;
     }
     if (mode === 'tutorial') { tutorialStep(); return; }
-    if (Math.random() < 0.5) assistant.say(pick(LINES.stepOk), 1.3);
+    if (Math.random() < 0.5) doctor.say(pick(LINES.stepOk), 1.3);
   }
 
   function mistake(tool, pointer) {
@@ -1618,7 +1654,7 @@ export function createClinic(app) {
       fx.emit('anger', tmp2.copy(h).add(new THREE.Vector3(0.1, 0.17, 0)), 1, { speed: 0, size: 0.08, life: 1.2 });
       fx.emit('puff', tmp2.copy(h).add(new THREE.Vector3(0, 0.24, 0)), 6, { speed: 0.15, size: 0.07, up: 0.35, life: 1.0, grow: 1.5 });
     }
-    assistant.act('facepalm', 1.1);
+    doctor.act('facepalm', 1.1);
     const want = curStep(firstOpen())?.tool || 'mirror';
     const right = want === 'xray' ? null : TOOL_INFO[want].name;
     refreshCard(true);
@@ -1627,8 +1663,8 @@ export function createClinic(app) {
       returnTool(tool);
       await wait(0.6);
       if (mistakes >= maxHearts()) { await leaveSad(); return; }
-      assistant.say(right ? `Dokter, coba pakai ${right}!` : `Dokter, ${TOOL_HINT.xray}!`, 2.4);
-      assistant.act('point', 1.6);
+      doctor.say(right ? `Dokter, coba pakai ${right}!` : `Dokter, ${TOOL_HINT.xray}!`, 2.4);
+      doctor.act('point', 1.6);
       if (tut) tutorialStep();
       await wait(0.5);
       ch.face('aaa');
@@ -1644,9 +1680,11 @@ export function createClinic(app) {
     bHint.userData.setLabel(hintLabel());
     sfx.play('sparkle');
     assistant.act('point', 1.4);
+    assistant.face('smiley');
     if (want.tool === 'xray') { assistant.say('Petunjuk: tekan layar rontgen di sebelah kiri, Dokter!', 2.8); return; }
     hinted = want.tool;
     tray.highlight(want.tool);
+    hintLookT = 2.5; // Nana looks at the tool she means
     assistant.say(`Petunjuk: pakai ${TOOL_INFO[want.tool].name}, yang bercincin di baki!`, 2.8);
   }
 
@@ -1659,7 +1697,6 @@ export function createClinic(app) {
     if (!ptr) return;
     assistant.act('give', 1.4);
     assistant.face('smiley');
-    assistant.say(`${pick(LINES.nurseGive)} ${TOOL_INFO[id].name}.`, 2.2);
     helpCost += 20;
     tray.onPick(tool, ptr);
     sfx.play('sparkle');
@@ -1680,8 +1717,8 @@ export function createClinic(app) {
       sfx.play('sneeze');
       ch.jump = 1;
       fx.emit('puff', ch.mouthWorld(tmp), 10, { speed: 0.6, size: 0.06, life: 0.8, grow: 1.2, dir: tmp2.copy(head).sub(tmp).normalize() });
-      if (held.size) { returnAll(); assistant.say('Waduh, alatnya terpental!', 1.8); }
-      assistant.act('shrug', 1.2);
+      if (held.size) { returnAll(); doctor.say('Waduh, alatnya terpental!', 1.8); }
+      doctor.act('shrug', 1.2);
       await wait(1.2);
       ch.face('aaa');
       ch.say('Maaf, Dokter... hehe', 1.2);
@@ -1692,8 +1729,8 @@ export function createClinic(app) {
       ch.face('talk');
       ch.act('phone', 3.0);
       ch.say(pick(LINES.phone), 2.8);
-      assistant.say('Sebentar, Dokter... pasiennya angkat telepon.', 2.4);
-      assistant.act('shrug', 1.4);
+      doctor.say('Sebentar, Dokter... pasiennya angkat telepon.', 2.4);
+      doctor.act('shrug', 1.4);
       await wait(3.0);
       ch.face('aaa');
       ch.say('Oke, lanjut Dokter!', 1.0);
@@ -1702,7 +1739,7 @@ export function createClinic(app) {
       sleeping = true;
       ch.face('sleep');
       ch.say('Zzz...', 1.6);
-      assistant.say('Hihi, pasiennya tidur, Dokter. Pelan-pelan ya.', 2.2);
+      doctor.say('Hihi, pasiennya tidur, Dokter. Pelan-pelan ya.', 2.2);
     } else if (kind === 'hiccup') {
       for (let i = 0; i < 4 && my === token && state !== 'done'; i++) {
         ch.jump = 0.7;
@@ -1783,7 +1820,9 @@ export function createClinic(app) {
     guard(wait(0.45).then(() => takePhoto(r.stars)));
     assistant.act('clap', 2.0);
     assistant.face('happy');
-    assistant.say(comboMult() > 1 ? `COMBO ×${comboMult()}! Luar biasa, Dokter!` : 'Hebat, Dokter!', 1.8);
+    doctor.act('clap', 2);
+    doctor.face('happy');
+    doctor.say(comboMult() > 1 ? `COMBO ×${comboMult()}! Luar biasa, Dokter!` : 'Hebat, Dokter!', 1.8);
     if (mode === 'event') showPop(`+${r.points}`, r.mult > 1 ? `×${r.mult}` : `${'★'.repeat(r.stars)}`);
     await wait(2.0);
     room.chair.want = 0;
@@ -1811,8 +1850,8 @@ export function createClinic(app) {
     ch.face('sad');
     ch.say(reason === 'bored' ? pick(LINES.waitBored) : pick(LINES.leave), 2.4, 'sad');
     sfx.play('sad');
-    assistant.act('shrug', 1.6);
-    assistant.face('sad');
+    doctor.act('shrug', 1.6);
+    doctor.face('sad');
     if (mode === 'event') showPop('Pasien kecewa', reason === 'bored' ? 'kelamaan' : 'salah alat', true);
     await wait(1.8);
     room.chair.want = 0;
@@ -1916,7 +1955,9 @@ export function createClinic(app) {
     sfx.play('win');
     assistant.act('clap', 2);
     assistant.face('happy');
-    assistant.say(mode === 'tutorial' ? 'Hebat! Sekarang coba Mulai kerja, Dokter!' : shift.lost === 0 ? 'Semua pasien senang! Keren!' : 'Kerja bagus, Dokter!', 2.8);
+    doctor.act('clap', 2);
+    doctor.face('happy');
+    doctor.say(mode === 'tutorial' ? 'Hebat! Sekarang coba Mulai kerja, Dokter!' : shift.lost === 0 ? 'Semua pasien senang! Keren!' : 'Kerja bagus, Dokter!', 2.8);
     fx.emit('confetti', new THREE.Vector3(0, 2.3, -1.0), 40, { speed: 0.7, size: 0.04, life: 2.4, gravity: 0.7, spread: 1.2 });
   }
 
@@ -1949,6 +1990,7 @@ export function createClinic(app) {
     resetAll();
     photo.reset();
     photoOpen = false;
+    photoLink = null;
     bPhoto.userData.setLabel('Foto kenangan');
     if (wheelOpen) { wheel.close(); wheelOpen = false; }
     wheelReady = false;
@@ -1968,8 +2010,8 @@ export function createClinic(app) {
     state = 'idle';
     layout();
     refreshCard(true);
-    assistant.face('smiley');
-    assistant.say(m === 'tutorial' ? 'Aku Suster Nana. Ikuti aku ya, Dokter!' : m === 'event' ? 'Mode event! 3 menit, ayo cepat!' : 'Ayo mulai, Dokter! Pasien pertama datang.', 2.6);
+    doctor.face('smiley');
+    doctor.say(m === 'tutorial' ? 'Aku Dokter Ratna. Ikuti aku ya, Dokter!' : m === 'event' ? 'Mode event! 3 menit, ayo cepat!' : 'Ayo mulai, Dokter! Pasien pertama datang.', 2.6);
     sfx.play('yay');
     callNext();
   }
@@ -2047,7 +2089,7 @@ export function createClinic(app) {
     demoHand.visible = true;
     demoHand.position.copy(DEMO_PARK);
     demoT = 1;
-    assistant.say('Lihat nih, begini cara merawat gigi! Ayo coba!', 3);
+    doctor.say('Lihat nih, begini cara merawat gigi! Ayo coba!', 3);
   }
   function stopDemo() {
     if (!demo) return;
@@ -2117,6 +2159,8 @@ export function createClinic(app) {
   let starPop = 0;
   let chatT = 5;
   const assistantLook = new THREE.Vector3();
+  const doctorLook = new THREE.Vector3();
+  let hintLookT = 0;
 
   function update(dt) {
     frameNo++;
@@ -2226,7 +2270,9 @@ export function createClinic(app) {
     }
     // the assistant watches the dentist, or the tool in their hand
     const tool0 = [...held.values()][0];
-    if (tool0) assistant.lookAt(tool0.tip.getWorldPosition(assistantLook));
+    hintLookT -= dt;
+    if (hintLookT > 0 && hinted && tray.tools[hinted]) assistant.lookAt(tray.tools[hinted].group.getWorldPosition(assistantLook));
+    else if (tool0) assistant.lookAt(tool0.tip.getWorldPosition(assistantLook));
     else if (!assistant.lookTarget || assistant.lookTarget === assistantLook) assistant.lookAt(head);
     if (state === 'title' || state === 'final' || state === 'idle' || state === 'result' || state === 'arriving') {
       idleT -= dt;
@@ -2236,11 +2282,17 @@ export function createClinic(app) {
         assistant.act(busy ? 'tidy' : pick(['wave', 'thumbs', 'tidy']), busy ? 2.4 : 1.8);
         if (busy && Math.random() < 0.6) sfx.play('tick');
         assistant.face('smiley');
-        if (state === 'title' && !progress.tutorialDone && Math.random() < 0.6) assistant.say('Baru pertama? Coba Tutorial dulu, Dokter!', 2.6);
+        if (!busy && !doctor.action && Math.random() < 0.5) { doctor.act(pick(['wave', 'thumbs']), 1.6); doctor.face('smiley'); }
+        if (state === 'title' && !progress.tutorialDone && Math.random() < 0.6) doctor.say('Baru pertama? Coba Tutorial dulu, Dokter!', 2.6);
       }
     }
     assistant.update(dt);
     if (assistant.faceName !== 'neutral' && !assistant.bubble.time && !assistant.action) assistant.face('neutral');
+    // Dokter Ratna watches the patient's mouth while you work, otherwise looks at you
+    if (patient && (state === 'treat' || state === 'react' || state === 'calm')) doctor.lookAt(patient.ch.mouthWorld(doctorLook));
+    else doctor.lookAt(head);
+    doctor.update(dt);
+    if (doctor.faceName !== 'neutral' && !doctor.bubble.time && !doctor.action) doctor.face('neutral');
 
     // rhythm light for the root canal file
     const step = curStep(job);
@@ -2307,7 +2359,8 @@ export function createClinic(app) {
 
   // first screen
   assistant.lookAt(head);
-  assistant.say('Selamat datang di FDC Dental Clinic, Dokter!', 3);
+  doctor.lookAt(head);
+  doctor.say('Selamat datang di FDC Dental Clinic, Dokter!', 3);
   layout();
 
   // debug hooks for testing in a browser console
@@ -2321,9 +2374,9 @@ export function createClinic(app) {
     get waiting() { return waiting; },
     get shift() { return shift; },
     get combo() { return combo; },
-    tray, start, nextPatient, toTitle, boards, assistant, music, voices, get room() { return room; },
+    tray, start, nextPatient, toTitle, boards, assistant, doctor, music, voices, get room() { return room; },
     startShift: () => start('shift'),
-    wheel, openWheel, wheelButton, finish, get wheelReady() { return wheelReady; }, photo, takePhoto, photoButton: () => bPhoto.userData.onSelect(),
+    wheel, openWheel, wheelButton, finish, get wheelReady() { return wheelReady; }, photo, takePhoto, photoButton: () => bPhoto.userData.onSelect(), get photoLink() { return photoLink; }, booth: BOOTH,
     hint: () => useHint(),
     get hintsLeft() { return hintsLeft; },
     get hintVisible() { return bHint.visible; },
@@ -2365,6 +2418,7 @@ export function createClinic(app) {
       resetAll();
       music.stop();
       assistant.dispose();
+      doctor.dispose();
       window.removeEventListener('keydown', onKey);
       for (const c of app.pointers.controllers) c.object.removeEventListener('squeezestart', squeeze);
     },

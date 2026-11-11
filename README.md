@@ -120,14 +120,15 @@ Scores are saved on that headset only. Each Quest has its own board, and a new b
 
 ## Character voices (ElevenLabs)
 
-Patients and Suster Nana speak their lines with recorded voices.
-- **Voices:** Suster Nana, kids, women and men. Each patient also gets a slightly different speed and pitch.
+Patients, Dokter Ratna and Suster Nana speak their lines with recorded voices.
+- **Voices:** Dokter Ratna, Suster Nana, kids, women and men. Each patient also gets a slightly different speed and pitch.
 - **Any line without a recording** uses the cartoon "bip" voice, so the game always works.
 - **Pengaturan → Suara karakter:** Suara asli / Bip lucu / Mati.
 
 **Making the recordings (on the Mac):**
 1. **Pick 4 voices** in ElevenLabs (Voices → Voice Library, filter Indonesian) and add them to My Voices. Copy each voice's **Voice ID** into `voices.config.json`:
-   - `nana`: a friendly young nurse
+   - `senior`: Dokter Ratna, the senior dentist who guides the player
+   - `nana`: Suster Nana, who only speaks for hints
    - `kid`: a child
    - `woman`
    - `man`
@@ -145,6 +146,42 @@ Patients and Suster Nana speak their lines with recorded voices.
 **Changing lines later:** run `npm run voices` again. Only new or changed lines are made (and cost credits). To redo a line, delete its file from `public/voices/<voice>/`; `voices-lines.csv` shows which file is which line.
 
 **License:** recordings made on a free ElevenLabs account can't be used commercially. For FDC events, use a paid plan; Starter covers 11,000 characters.
+
+## Staff in the clinic
+
+- **Dokter Ratna (senior dentist)** stands by the chair. She wears a white medical apron over teal scrubs, with glasses and a stethoscope. She does all the talking:
+  - welcome
+  - tutorial steps and instructions
+  - praise and combos
+  - prize announcements
+  - help after a mistake
+- **Suster Nana** stands to the right of the tool tray. She stays quiet:
+  - she hands over the right tool when you hesitate (Bantuan Suster Nana)
+  - she tidies up and waves
+  - she only speaks when you press **Petunjuk alat**: she points at the tool and says which one to take
+
+## Foto kenangan download
+
+When this is set up, the QR on the Foto kenangan card downloads the photo itself.
+- The headset uploads the card to your Google Drive, in a folder **FDC Dentist - Foto Kenangan**.
+- That one file is shared as "anyone with the link can view".
+- Visitors scan the QR with their phone and save the picture.
+- If it isn't set up, or the booth has no internet, the QR leads to the FDC website instead, and the card says to take a photo of the TV.
+
+**Set up once (about 5 minutes):**
+1. Go to https://script.google.com → **New project**.
+2. Replace the code with `scripts/photo-upload.gs` from this folder, then **Save**.
+3. **Deploy → New deployment →** the gear icon **→ Web app**:
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+4. Press **Deploy**, allow access to your Google Drive, and copy the **Web app URL**. It ends in `/exec`.
+5. Paste it into `src/game/config.js` → `BOOTH.photoUploadUrl: 'https://script.google.com/macros/s/.../exec'`, then push.
+
+To test the URL, open it in a browser. It should show `{"ok":true,...}`.
+
+The booth needs internet. Uploading takes a few seconds; the card shows "Menyiapkan link foto..." until the QR is ready.
+
+**Privacy:** the photo shows the cartoon patient plus the player's name and score. Anyone with a photo's link can open it. You can delete old photos from the Drive folder after the event.
 
 ## Booth extras
 

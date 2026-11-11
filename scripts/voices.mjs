@@ -6,7 +6,7 @@
  *   npm run voices         make the missing audio files (needs the API key, see below)
  *
  * Setup (once):
- *   1. voices.config.json: the ElevenLabs voice ID for each character voice (nana, kid, woman, man).
+ *   1. voices.config.json: the ElevenLabs voice ID for each character voice (nana, senior, kid, woman, man).
  *      woman / man can list several IDs: each becomes a voice (woman, woman2, ...) and patients get one each.
  *   2. .env.local (never committed): ELEVENLABS_API_KEY=your-key
  *
@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} }; // config.js reads saved settings
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { CASES, LINES } = await import('../src/game/cases.js');
+const { CASES, LINES, TOOL_HINT } = await import('../src/game/cases.js');
 const { TOOL_INFO } = await import('../src/game/tools.js');
 const { PRIZES } = await import('../src/game/config.js');
 const { speakable, voiceKey, voiceFile } = await import('../src/game/voicekey.js');
@@ -41,18 +41,18 @@ const add = (voices, texts) => { for (const v of [].concat(voices)) for (const t
 // Patients (generic lines in all three patient voices; kid / VIP lines only where they fit)
 const KID_ONLY = ['kidHello', 'kidThanks', 'kidPain'];
 for (const [k, list] of Object.entries(LINES)) {
-  if (k === 'nurseGive' || k === 'stepOk') continue; // Suster Nana's
+  if (k === 'nurseGive' || k === 'stepOk') continue; // the staff's lines, not the patients'
   add(KID_ONLY.includes(k) ? 'kid' : k === 'vipHello' ? ADULT : PATIENT, list);
 }
 for (const c of Object.values(CASES)) add(PATIENT, c.complaints);
 add(PATIENT, ['Terus...']); // joins the two complaints of a patient with 2 problems
 
-// Lines written straight into game.js (patients: ch.say, Suster Nana: assistant.say)
+// Lines written straight into game.js (patients: ch.say, Dokter Ratna: doctor.say, Suster Nana: assistant.say)
 const game = fs.readFileSync(path.join(root, 'src/game/game.js'), 'utf8');
 const TONES = new Set(['normal', 'happy', 'sad', 'angry']);
 for (const ln of game.split('\n')) {
   if (!ln.includes('.say(')) continue;
-  const voices = ln.includes('assistant.say(') ? ['nana'] : PATIENT;
+  const voices = ln.includes('assistant.say(') ? ['nana'] : ln.includes('doctor.say(') ? ['senior'] : PATIENT;
   for (const m of ln.matchAll(/'([^'\\]*(?:\\.[^'\\]*)*)'/g)) {
     const s = m[1];
     if (TONES.has(s) || !/[A-Za-z]{2}/.test(s) || /^[a-z]+$/.test(s)) continue; // tones, keys like 'chatty'
@@ -60,25 +60,25 @@ for (const ln of game.split('\n')) {
   }
 }
 
-// Suster Nana's lines that include a tool, a treatment, a prize or a number
+// Lines that include a tool, a treatment, a prize or a number.
+// Suster Nana only gives the hints; Dokter Ratna (senior) says everything else.
 const toolNames = Object.entries(TOOL_INFO).filter(([id]) => id !== 'xray').map(([, t]) => t.name);
 for (const n of toolNames) {
-  for (const g of LINES.nurseGive) add('nana', `${g} ${n}.`);
   add('nana', `Petunjuk: pakai ${n}, yang bercincin di baki!`);
-  add('nana', `Dok, coba pakai ${n}!`);
+  add('senior', `Dokter, coba pakai ${n}!`);
 }
-add('nana', 'Dok, lihat layar rontgen di sebelah kiri!');
-add('nana', LINES.stepOk);
+add('senior', `Dokter, ${TOOL_HINT.xray}!`);
+add('senior', LINES.stepOk);
 for (const c of Object.values(CASES)) {
-  add('nana', `Satu beres! Sekarang ${c.title.toLowerCase()}, Dok.`);
+  add('senior', `Satu beres! Sekarang ${c.title.toLowerCase()}, Dokter.`);
   c.steps.forEach((s, i) => {
     if (s.tool === 'xray') return;
-    add('nana', `Langkah ${i + 1}: ${s.text.toLowerCase()}. Ambil ${TOOL_INFO[s.tool].name}, yang bercincin di baki!`);
+    add('senior', `Langkah ${i + 1}: ${s.text.toLowerCase()}. Ambil ${TOOL_INFO[s.tool].name}, yang bercincin di baki!`);
   });
 }
-for (const p of PRIZES) add('nana', `Selamat! Kamu dapat ${p.text}!`);
-for (const n of [1.5, 2, 3]) add('nana', `COMBO ×${n}! Luar biasa, Dok!`);
-for (let n = 2; n <= 12; n++) add('nana', `${n}!`);
+for (const p of PRIZES) add('senior', `Selamat! Kamu dapat ${p.text}!`);
+for (const n of [1.5, 2, 3]) add('senior', `COMBO ×${n}! Luar biasa, Dokter!`);
+for (let n = 2; n <= 12; n++) add('senior', `${n}!`);
 
 // one entry per voice + key
 const byKey = new Map();
@@ -117,7 +117,7 @@ let key = process.env.ELEVENLABS_API_KEY;
 const envFile = path.join(root, '.env.local');
 if (!key && fs.existsSync(envFile)) key = /ELEVENLABS_API_KEY\s*=\s*(\S+)/.exec(fs.readFileSync(envFile, 'utf8'))?.[1];
 if (!key) { console.error('No API key. Put ELEVENLABS_API_KEY=... in .env.local (see README).'); process.exit(1); }
-const missing = ['nana', 'kid', 'woman', 'man'].filter((v) => !VOICE_ID[v] || VOICE_ID[v].startsWith('PASTE'));
+const missing = ['nana', 'senior', 'kid', 'woman', 'man'].filter((v) => !VOICE_ID[v] || VOICE_ID[v].startsWith('PASTE'));
 if (missing.length) { console.error(`voices.config.json: add the voice ID for ${missing.join(', ')}.`); process.exit(1); }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

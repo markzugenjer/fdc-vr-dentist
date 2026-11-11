@@ -40,10 +40,14 @@ export const PRIZES = [
   { text: 'Kipas Tangan Elektrik', chance: 5 },
 ];
 
-/** Booth details on the Foto kenangan card: the event name and where its QR code leads. */
+/** Booth details for the Foto kenangan card: the event name, the booking link, and where photos upload. */
 export const BOOTH = {
   eventName: 'FDC Fest',
   link: 'https://www.fdcdentalclinic.co.id',
+  // Foto kenangan download: the Apps Script web app URL (README → "Foto kenangan download").
+  // Empty = no upload; the card's QR then leads to the link above.
+  photoUploadUrl: '',
+  photoUploadKey: 'fdc-fest',
 };
 
 /** The choices each setting cycles through in the game. */

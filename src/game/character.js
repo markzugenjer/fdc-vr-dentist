@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { FONT, roundRect, wrap } from '../core/ui.js';
 
 /**
@@ -153,6 +154,9 @@ export class Character {
     this.addHair(hairMat, o.hairStyle);
     if (o.cap) this.addNurseCap();
     if (o.shades) this.addShades();
+    if (o.apron) this.addApron(o.apron);
+    if (o.glasses) this.addGlasses();
+    if (o.stethoscope) this.addStethoscope();
     if (o.badge) this.addBadge(o.badge);
 
     // eyes: white, pupil, shine; an "X" version for pain
@@ -472,6 +476,75 @@ export class Character {
     g.position.set(0, 0.2, 0.15);
     g.rotation.x = -0.75;
     this.head.add(g);
+  }
+
+  /** A white medical apron: bib on the chest, a skirt to just below the knees, neck strap, waist ties and a pocket with a pen. */
+  addApron(color) {
+    const mat = std(color, { roughness: 0.7 });
+    const bib = new THREE.Mesh(new RoundedBoxGeometry(0.21, 0.27, 0.012, 2, 0.006), mat);
+    bib.position.set(0, 0.27, 0.112);
+    this.torso.add(bib);
+    // tapered skirt: narrow at the waist, wider at the knees, leaning out over the tummy and thighs
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.13, 0);
+    sh.lineTo(0.13, 0);
+    sh.lineTo(0.17, -0.5);
+    sh.quadraticCurveTo(0, -0.53, -0.17, -0.5);
+    sh.lineTo(-0.13, 0);
+    const skirt = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.01, bevelEnabled: true, bevelThickness: 0.003, bevelSize: 0.004, bevelSegments: 1 }), mat);
+    skirt.position.set(0, 0.15, 0.115);
+    skirt.rotation.x = -0.06;
+    this.torso.add(skirt);
+    for (const sx of [-1, 1]) {
+      const tie = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.018, 0.2), mat);
+      tie.position.set(0.155 * sx, 0.14, 0.01);
+      tie.rotation.y = 0.15 * sx;
+      this.torso.add(tie);
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.16, 0.012), mat);
+      strap.position.set(0.075 * sx, 0.45, 0.07);
+      strap.rotation.set(-0.5, 0, -0.25 * sx);
+      this.torso.add(strap);
+    }
+    const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.006), std('#eef2f1', { roughness: 0.7 }));
+    pocket.position.set(-0.06, 0.02, 0.135);
+    this.torso.add(pocket);
+    const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.07, 6), std('#3d7fd6', { roughness: 0.4 }));
+    pen.position.set(-0.085, 0.06, 0.135);
+    this.torso.add(pen);
+  }
+
+  /** Thin round glasses. */
+  addGlasses() {
+    const frame = std('#5a4a42', { roughness: 0.4, metalness: 0.3 });
+    const g = new THREE.Group();
+    for (const sx of [-1, 1]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.006, 6, 20), frame);
+      ring.position.set(0.084 * sx, 0, 0);
+      ring.rotation.y = 0.3 * sx;
+      g.add(ring);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.006, 0.16), frame);
+      arm.position.set(0.19 * sx, 0.01, -0.1);
+      g.add(arm);
+    }
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.006, 0.006), frame);
+    bridge.position.y = 0.012;
+    g.add(bridge);
+    g.position.set(0, 0.0, 0.235);
+    this.head.add(g);
+  }
+
+  /** A stethoscope around the neck. */
+  addStethoscope() {
+    const tube = std('#3a3f44', { roughness: 0.5 });
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.07, 0.3, 0.125), new THREE.Vector3(-0.09, 0.44, 0.09), new THREE.Vector3(-0.06, 0.52, 0.0),
+      new THREE.Vector3(0, 0.54, -0.06), new THREE.Vector3(0.06, 0.52, 0.0), new THREE.Vector3(0.09, 0.44, 0.09), new THREE.Vector3(0.05, 0.27, 0.13),
+    ]);
+    this.torso.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.008, 6), tube));
+    const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.012, 14), std('#c7ccd0', { metalness: 0.8, roughness: 0.25 }));
+    bell.rotation.x = Math.PI / 2;
+    bell.position.set(0.05, 0.255, 0.135);
+    this.torso.add(bell);
   }
 
   /** A small name badge on the chest (FDC branding). */

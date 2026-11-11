@@ -46,7 +46,7 @@ export const BOOTH = {
   link: 'https://www.fdcdentalclinic.co.id',
   // Foto kenangan download: the Apps Script web app URL (README → "Foto kenangan download").
   // Empty = no upload; the card's QR then leads to the link above.
-  photoUploadUrl: '',
+  photoUploadUrl: 'https://script.google.com/macros/s/AKfycbyv43-QKTVOUV14joxBzL_4yuUkaxsO2CD8Mt77ODwB8nItWovN_oRhoVZXKlH-SS0V/exec',
   photoUploadKey: 'fdc-fest',
 };
 

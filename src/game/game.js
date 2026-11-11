@@ -2161,6 +2161,7 @@ export function createClinic(app) {
   const assistantLook = new THREE.Vector3();
   const doctorLook = new THREE.Vector3();
   let hintLookT = 0;
+  let tutorialNudged = false; // 'Baru pertama? Coba Tutorial' is said once per session
 
   function update(dt) {
     frameNo++;
@@ -2283,7 +2284,11 @@ export function createClinic(app) {
         if (busy && Math.random() < 0.6) sfx.play('tick');
         assistant.face('smiley');
         if (!busy && !doctor.action && Math.random() < 0.5) { doctor.act(pick(['wave', 'thumbs']), 1.6); doctor.face('smiley'); }
-        if (state === 'title' && !progress.tutorialDone && Math.random() < 0.6) doctor.say('Baru pertama? Coba Tutorial dulu, Dokter!', 2.6);
+        // suggest the tutorial once, and only on the main menu (not while typing a name or in Pengaturan)
+        if (!tutorialNudged && state === 'title' && bigContent.kind === 'title' && !progress.tutorialDone && Math.random() < 0.6) {
+          tutorialNudged = true;
+          doctor.say('Baru pertama? Coba Tutorial dulu, Dokter!', 2.6);
+        }
       }
     }
     assistant.update(dt);

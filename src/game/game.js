@@ -11,7 +11,7 @@ import { buildBoards } from './boards.js';
 import { progress } from './progress.js';
 import { Decor, DECOR, DECOR_ORDER } from './decor.js';
 import { config, CHOICES, BOOTH } from './config.js';
-import { PhotoBooth, drawPhotoCard, uploadCard, bookingQR, downloadQR } from './photo.js';
+import { PhotoBooth, drawPhotoCard, uploadCard, downloadQR } from './photo.js';
 import { Voices } from './voice.js';
 import { PrizeWheel } from './wheel.js';
 import { drawLeaderboard, niceName } from './leaderboard.js';
@@ -306,9 +306,12 @@ export function createClinic(app) {
     else if (nameText.length < NAME_MAX && !(ch === ' ' && (!nameText || nameText.endsWith(' ')))) nameText += ch;
     namePanel.redraw();
   };
-  const KEY_ROWS = ['ABCDEFGHI', 'JKLMNOPQR', 'STUVWXYZ⌫'];
+  // QWERTY, like a phone keyboard
+  const KEY_ROWS = ['QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM⌫'];
   KEY_ROWS.forEach((row, r) => [...row].forEach((ch, i) => {
-    addNameBtn(ch, ch === '⌫' ? 'pink' : 'light', (i - 4) * 0.132, 0.06 - r * 0.115, 0.118, () => typeKey(ch));
+    const wide = ch === '⌫';
+    const x = (i - (row.length - 1) / 2) * 0.116 + (wide ? 0.03 : 0);
+    addNameBtn(ch, wide ? 'pink' : 'light', x, 0.06 - r * 0.115, wide ? 0.164 : 0.104, () => typeKey(ch));
   }));
   addNameBtn('Spasi', 'light', -0.4, -0.3, 0.4, () => typeKey(' '));
   addNameBtn('Kembali', 'light', -0.4, -0.415, 0.4, () => { bigContent = { kind: 'title' }; big.redraw(); layout(); });
@@ -707,17 +710,17 @@ export function createClinic(app) {
   // ------------------------------------------------------------------ Foto kenangan (photo card after the round)
   const photo = new PhotoBooth(app.renderer, app.scene);
   let photoOpen = false;
-  let photoLink = null; // this round's download link: undefined while uploading, null if there is none
+  let photoLink = null; // this round's download link: undefined while uploading, null before upload or after it failed
   const cardInfo = () => ({
     photo: photo.canvas, name: playerName, score: shift.score, place: bigContent.place || 0, plays: bigContent.plays || 0,
     prize: bigContent.prize || '', eventName: BOOTH.eventName,
   });
   const photoPanel = makePanel(1.3, 0.78, (c, W, H) => {
     if (!photo.has) return;
-    const qr = photoLink === undefined ? { waiting: true } : photoLink ? downloadQR(photoLink) : bookingQR(BOOTH.link);
+    const qr = photoLink === undefined ? { waiting: true } : photoLink ? downloadQR(photoLink) : { failed: true, setup: !BOOTH.photoUploadUrl };
     drawPhotoCard(c, W, H, { ...cardInfo(), qr });
   });
-  /** Upload the card (with the FDC booking QR on it) once per round, then show its download QR. */
+  /** Upload the card once per round, then show its download QR (the saved copy carries the share tag). */
   async function shareCard() {
     if (!BOOTH.photoUploadUrl || photoLink !== null) return;
     photoLink = undefined;
@@ -726,13 +729,18 @@ export function createClinic(app) {
     const c = document.createElement('canvas');
     c.width = 1600;
     c.height = 960;
-    drawPhotoCard(c.getContext('2d'), c.width, c.height, { ...cardInfo(), qr: { ...bookingQR(BOOTH.link), footer: 'Bagikan & tag FDC Dental Clinic' } });
+    drawPhotoCard(c.getContext('2d'), c.width, c.height, { ...cardInfo(), qr: { tag: true } });
     const stamp = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 16).replace(/[-:T]/g, '');
-    const link = await uploadCard(c, { url: BOOTH.photoUploadUrl, key: BOOTH.photoUploadKey, name: `FDC-${stamp}-${(playerName || 'Dokter').replace(/[^A-Za-z0-9]+/g, '-')}.jpg` });
-    if (round !== token) return; // a new round started meanwhile
+    const name = `FDC-${stamp}-${(playerName || 'Dokter').replace(/[^A-Za-z0-9]+/g, '-')}.jpg`;
+    let link = null;
+    for (let tries = 0; tries < 3 && !link; tries++) {
+      link = await uploadCard(c, { url: BOOTH.photoUploadUrl, key: BOOTH.photoUploadKey, name });
+      if (round !== token) return; // a new round started meanwhile
+    }
     photoLink = link;
     photoPanel.redraw();
     if (link) doctor.say('Scan QR-nya untuk download fotomu, Dokter!', 2.6);
+    else doctor.say('Fotonya belum terkirim. Cek internet, lalu buka foto lagi ya.', 3);
   }
   photoPanel.mesh.position.copy(FRONT);
   photoPanel.mesh.visible = false;

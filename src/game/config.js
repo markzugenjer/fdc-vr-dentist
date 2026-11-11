@@ -40,12 +40,12 @@ export const PRIZES = [
   { text: 'Kipas Tangan Elektrik', chance: 5 },
 ];
 
-/** Booth details for the Foto kenangan card: the event name, the booking link, and where photos upload. */
+/** Booth details for the Foto kenangan card: the event name, the FDC website, and where photos upload. */
 export const BOOTH = {
   eventName: 'FDC Fest',
   link: 'https://www.fdcdentalclinic.co.id',
   // Foto kenangan download: the Apps Script web app URL (README → "Foto kenangan download").
-  // Empty = no upload; the card's QR then leads to the link above.
+  // The card's QR is always the photo download. Empty = no upload, so the card says upload isn't set up.
   photoUploadUrl: 'https://script.google.com/macros/s/AKfycbxPH0x4I7hpjAhCxhlBQxgfYSJVLjsY3nWoUbaA0m6DQLbUf6rTQogZhlLDBjt3Fnri/exec',
   photoUploadKey: 'fdc-fest',
 };

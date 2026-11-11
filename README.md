@@ -166,7 +166,7 @@ When this is set up, the QR on the Foto kenangan card downloads the photo itself
 - The headset uploads the card to your Google Drive, in a folder **FDC Dentist - Foto Kenangan**.
 - That one file is shared as "anyone with the link can view".
 - Visitors scan the QR with their phone and save the picture.
-- If it isn't set up, or the booth has no internet, the QR leads to the FDC website instead, and the card says to take a photo of the TV.
+- The card's QR is always the photo download. The upload is tried 3 times; if it still fails (no internet), the card says "Belum terkirim" and opening Foto kenangan again retries. The copy saved to Drive shows a "Tag FDC Dental Clinic · #klinikgigiyaafdc" tile where the QR would be, since it can't contain its own link.
 
 **Set up once (about 5 minutes):**
 1. Go to https://script.google.com → **New project**.

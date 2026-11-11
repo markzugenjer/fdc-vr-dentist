@@ -165,10 +165,17 @@ export const KIDS = [
   { name: 'Tiara', look: { skin: '#f0c3a0', hair: '#6b4128', hairStyle: 'bun', top: '#f6b9c9', bottom: '#b9a7e8' } },
 ];
 
-/** The senior dentist who guides the player (welcome, steps, praise). White medical apron over teal scrubs. */
+/**
+ * The senior dentist who guides the player (welcome, steps, praise): experienced, not old.
+ * Long dark hair, lashes, rosy lips, pearl earrings; a long white lab coat (open at the front)
+ * over grey-blue scrubs, a stethoscope and an ID badge.
+ */
 export const SENIOR = {
   name: 'Dokter Ratna',
-  look: { skin: '#e8b996', hair: '#8f8a86', hairStyle: 'bun', top: '#4f9c86', bottom: '#4f9c86', shoes: '#ffffff', collar: '#ffffff', longSleeves: true, apron: '#ffffff', glasses: true, stethoscope: true },
+  look: {
+    skin: '#f0c4a2', hair: '#33201b', hairStyle: 'long', top: '#f7f8f8', bottom: '#7f95a3', shoes: '#ffffff', collar: '#f7f8f8',
+    longSleeves: true, labCoat: '#7f95a3', stethoscope: true, lashes: true, lips: '#d4566c', earrings: '#f4ead8',
+  },
 };
 
 export const ASSISTANT = {

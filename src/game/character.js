@@ -155,7 +155,9 @@ export class Character {
     if (o.cap) this.addNurseCap();
     if (o.shades) this.addShades();
     if (o.apron) this.addApron(o.apron);
+    if (o.labCoat) this.addLabCoat(o.top, o.labCoat);
     if (o.glasses) this.addGlasses();
+    if (o.earrings) this.addEarrings(o.earrings);
     if (o.stethoscope) this.addStethoscope();
     if (o.badge) this.addBadge(o.badge);
 
@@ -191,6 +193,20 @@ export class Character {
       }
       x.visible = false;
       g.add(x);
+      if (o.lashes) {
+        // upper lid line and a little flick at the outer corner
+        const lid = new THREE.Mesh(cached('lidArc', () => new THREE.TorusGeometry(0.041, 0.0048, 4, 16, Math.PI * 0.86)), dark);
+        lid.rotation.z = Math.PI * 0.07;
+        lid.scale.set(1, 1.12, 1);
+        lid.position.z = 0.008;
+        g.add(lid);
+        for (const [dx, dy, r, len] of [[0.036, 0.03, 0.75, 0.016], [0.026, 0.04, 0.35, 0.012]]) {
+          const lash = new THREE.Mesh(capsule(0.003, len), dark);
+          lash.position.set(dx * s, dy, 0.01);
+          lash.rotation.z = -r * s;
+          g.add(lash);
+        }
+      }
       return { g, w, pupil, x, side: s };
     });
     this.brows = [-1, 1].map((s) => {
@@ -334,7 +350,7 @@ export class Character {
     m.position.set(0, -0.092, 0.212);
     m.rotation.x = 0.41;
     this.head.add(m);
-    const lineMat = std('#9a3b47', { roughness: 0.5 });
+    const lineMat = std(this.opts.lips || '#9a3b47', { roughness: 0.5 });
     this.smile = new THREE.Mesh(cached('smile', () => new THREE.TorusGeometry(0.042, 0.008, 6, 18, Math.PI)), lineMat);
     this.smile.rotation.z = Math.PI;
     this.smile.position.set(0, 0.022, 0.012);
@@ -511,6 +527,78 @@ export class Character {
     const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.07, 6), std('#3d7fd6', { roughness: 0.4 }));
     pen.position.set(-0.085, 0.06, 0.135);
     this.torso.add(pen);
+  }
+
+  /**
+   * A long white lab coat worn open: the chest and sleeves are the coat (top colour), the scrubs show
+   * in the opening, with lapels, a chest pocket with a pen, an ID card, and a coat skirt to below the knee.
+   */
+  addLabCoat(coat, scrubs) {
+    const coatMat = std(coat, { roughness: 0.75, side: THREE.DoubleSide });
+    const scrubMat = std(scrubs, { roughness: 0.85 });
+    // scrubs showing between the lapels (a V at the neck, then straight down)
+    const v = new THREE.Shape();
+    v.moveTo(-0.045, 0.49);
+    v.lineTo(0, 0.4);
+    v.lineTo(0.045, 0.49);
+    v.lineTo(0.06, 0.49);
+    v.lineTo(0.055, 0.1);
+    v.lineTo(-0.055, 0.1);
+    v.lineTo(-0.06, 0.49);
+    const strip = new THREE.Mesh(new THREE.ShapeGeometry(v), scrubMat);
+    strip.position.z = 0.111;
+    this.torso.add(strip);
+    // lapels folding back along the opening
+    for (const sx of [-1, 1]) {
+      const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.24, 0.01), coatMat);
+      lapel.position.set(0.075 * sx, 0.38, 0.112);
+      lapel.rotation.set(-0.05, 0.25 * sx, 0.2 * sx);
+      this.torso.add(lapel);
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.3, 0.012), coatMat);
+      edge.position.set(0.064 * sx, 0.18, 0.112);
+      this.torso.add(edge);
+    }
+    // coat skirt: open in front, flaring a little toward the knees
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.168, 0.215, 0.6, 24, 1, true, 0.42, Math.PI * 2 - 0.84), coatMat);
+    skirt.scale.z = 0.78;
+    skirt.position.set(0, -0.17, 0.0);
+    this.torso.add(skirt);
+    for (const sx of [-1, 1]) {
+      const front = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.6, 0.008), coatMat);
+      front.position.set(0.092 * sx, -0.17, 0.142);
+      front.rotation.set(-0.07, 0, 0.04 * sx);
+      this.torso.add(front);
+      const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.06, 0.004), std('#e9ecec', { roughness: 0.8 }));
+      pocket.position.set(0.095 * sx, -0.12, 0.149);
+      this.torso.add(pocket);
+    }
+    const chestPocket = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.004), std('#e9ecec', { roughness: 0.8 }));
+    chestPocket.position.set(-0.1, 0.3, 0.108);
+    chestPocket.rotation.y = -0.35;
+    this.torso.add(chestPocket);
+    const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.06, 6), std('#3d7fd6', { roughness: 0.4 }));
+    pen.position.set(-0.11, 0.33, 0.11);
+    this.torso.add(pen);
+    // ID card on a clip
+    const card = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.06, 0.003), std('#ffffff', { roughness: 0.6 }));
+    card.position.set(0.1, 0.24, 0.112);
+    card.rotation.y = 0.35;
+    this.torso.add(card);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.014, 0.004), std('#5fb89a', { roughness: 0.6 }));
+    band.position.set(0.1, 0.262, 0.114);
+    band.rotation.y = 0.35;
+    this.torso.add(band);
+  }
+
+  /** Small round earrings (pearl or gold). */
+  addEarrings(color) {
+    const mat = std(color, { metalness: 0.5, roughness: 0.25 });
+    for (const sx of [-1, 1]) {
+      const e = new THREE.Mesh(ball(10), mat);
+      e.scale.setScalar(0.022);
+      e.position.set(0.238 * sx, -0.055, 0.0);
+      this.head.add(e);
+    }
   }
 
   /** Thin round glasses. */

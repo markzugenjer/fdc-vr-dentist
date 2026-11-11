@@ -149,7 +149,7 @@ Patients, Dokter Ratna and Suster Nana speak their lines with recorded voices.
 
 ## Staff in the clinic
 
-- **Dokter Ratna (senior dentist)** stands by the chair. She wears a white medical apron over teal scrubs, with glasses and a stethoscope. She does all the talking:
+- **Dokter Ratna (senior dentist)** stands by the chair. She's an experienced dentist, not old: long dark hair, pearl earrings, and a long white lab coat over grey-blue scrubs, with a stethoscope and an ID card. She does all the talking:
   - welcome
   - tutorial steps and instructions
   - praise and combos
